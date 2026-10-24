@@ -84,12 +84,15 @@ html,body,canvas{touch-action:none;overscroll-behavior:none;-webkit-touch-callou
 .screen{z-index:10}#bubble,#floatLayer,#msgLayer{z-index:7}
 #stick{position:fixed;z-index:8;width:120px;height:120px;margin:-60px 0 0 -60px;border-radius:50%;border:3px solid rgba(255,255,255,.55);background:rgba(255,255,255,.12);pointer-events:none}
 #stick i{position:absolute;left:50%;top:50%;width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,.75);box-shadow:0 0 14px rgba(255,255,255,.6)}
+#tiltInd{position:absolute;left:50%;bottom:74px;transform:translateX(-50%);width:140px;height:8px;border-radius:5px;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.4)}
+#tiltInd i{position:absolute;top:50%;left:50%;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;background:#ffd36b;box-shadow:0 0 8px #ffb000}
+body:not(.touch) #tiltInd{display:none}
 #pauseBtn{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);pointer-events:auto;width:52px;height:52px;border-radius:50%;border:2px solid rgba(255,255,255,.5);background:rgba(20,16,40,.45);color:#fff;font-size:22px}
 .ctl{font-family:inherit;font-size:18px;font-weight:600;color:#fff;background:rgba(255,255,255,.15);border:2px solid rgba(255,255,255,.4);border-radius:30px;padding:8px 20px;margin-top:6px;pointer-events:auto}
 .touch-only{display:none!important}
 body.touch .touch-only{display:block!important}body.touch .ctl.touch-only{display:inline-block!important}
 body.touch .desk-only,body.touch .grid{display:none!important}
-body.touch #powers{bottom:76px;flex-wrap:wrap;justify-content:center;width:96%}
+body.touch #powers{bottom:100px;flex-wrap:wrap;justify-content:center;width:96%}
 body.touch .pw{min-width:0;padding:4px 8px 6px}body.touch .pw b{font-size:12px}
 @media (max-width:700px),(max-height:500px){
   #scoreBox{left:8px;top:8px;padding:6px 12px 8px;min-width:0}#score{font-size:28px}#scoreBox .row{font-size:14px;gap:10px}
@@ -122,6 +125,7 @@ body.touch .pw{min-width:0;padding:4px 8px 6px}body.touch .pw b{font-size:12px}
   <div id="bestBox" class="panel">🏆 Rekord: <b id="best">0</b><small id="bestFloor"></small><div id="muteBtn">🎵 muzyka [M]</div></div>
   <div id="lvl" class="panel hidden"></div>
   <button id="pauseBtn" class="touch-only">⏸</button>
+  <div id="tiltInd" class="hidden"><i></i></div>
   <div id="combo"><div id="comboText"></div><div id="comboBar"><i></i></div></div>
   <div id="heat" class="meter panel"><div class="lbl" style="font-size:9px;letter-spacing:1px">OSTROŚĆ</div><div class="tube"><i></i></div><div class="micon">🌶️</div></div>
   <div id="danger" class="meter panel"><div class="lbl" style="font-size:9px;letter-spacing:1px">BUKA</div><div class="tube"><i></i></div><div class="buka-ico"></div><div id="dangerDist">śpi</div></div>
@@ -1658,12 +1662,16 @@ function startGame() {
   $('start').classList.add('hidden'); $('over').classList.add('hidden'); $('hud').classList.remove('hidden');
   if (isTouch) {
     $('touchLayer').classList.remove('hidden');
-    document.documentElement.requestFullscreen?.({ navigationUI: 'hide' }).catch(() => {});
+    // NB: the gyro permission must be requested FIRST — requestFullscreen consumes the tap's
+    // user activation, after which requestPermission is silently denied. Fullscreen is
+    // requested on the first in-game tap instead.
+    TC.wantFullscreen = true;
     if (TC.mode === 'tilt') {
       TC.zero = null; // re-calibrate "neutral" to however the phone is held right now
+      TC.permT = performance.now();
       enableTilt().then(ok => {
-        if (!ok) { setCtl('stick'); banner('🕹️ Sterowanie dotykiem', 'Brak dostępu do żyroskopu'); return; }
-        setTimeout(() => { if (TC.mode === 'tilt' && !TC.gotTilt) { setCtl('stick'); banner('🕹️ Sterowanie dotykiem', 'Ten telefon nie ma żyroskopu'); } }, 1500);
+        if (!ok) { setCtl('stick', false); banner('🕹️ Sterowanie dotykiem', 'Brak zgody na czujnik ruchu'); return; }
+        setTimeout(() => { if (TC.mode === 'tilt' && !TC.gotTilt) { setCtl('stick', false); banner('🕹️ Sterowanie dotykiem', 'Brak danych z żyroskopu — w Brave włącz: Ustawienia → Ustawienia witryn → Czujniki ruchu'); } }, 2500);
       });
     }
   }
@@ -1690,15 +1698,20 @@ addEventListener('keydown', e => {
 addEventListener('keyup', e => { keys[e.code] = false; });
 const toggleMusic = () => { Snd.musicOn = !Snd.musicOn; $('muteBtn').textContent = Snd.musicOn ? '🎵 muzyka [M]' : '🔇 muzyka [M]'; };
 $('muteBtn').addEventListener('pointerdown', e => { e.stopPropagation(); toggleMusic(); });
-addEventListener('blur', () => { for (const k in keys) keys[k] = false; if (mode === 'play') togglePause(); });
+addEventListener('blur', () => {
+  for (const k in keys) keys[k] = false;
+  // the iOS/Android motion-permission prompt blurs the page — don't pause for that
+  if (mode === 'play' && !(TC.permT && performance.now() - TC.permT < 5000)) togglePause();
+});
 $('playBtn').onclick = () => { if (mode === 'title') startGame(); };
 $('againBtn').onclick = () => { if (mode === 'over') startGame(); };
 // ---------------- mobile controls ----------------
 // 'tilt': steer by tilting the phone (analog), tap anywhere = jump, hold = glide
 // 'stick': floating joystick on the left half, tap/hold on the right half = jump
 const TC_LABEL = { tilt: '📱 Przechylanie', stick: '🕹️ Dotyk' };
-function setCtl(m) {
-  TC.mode = m; localStorage.setItem('malaMi.ctl', m);
+function setCtl(m, persist = true) { // automatic fallbacks don't persist, so tilt is retried next game
+  TC.mode = m; if (persist) localStorage.setItem('malaMi.ctl', m);
+  $('tiltInd').classList.toggle('hidden', m !== 'tilt');
   for (const id of ['ctlBtn', 'ctlBtn2']) $(id).textContent = `Sterowanie: ${TC_LABEL[m]}`;
   $('touchHint').innerHTML = m === 'tilt'
     ? '📱 <b>Przechyl telefon</b>, żeby biec · <b>stuknij</b> gdziekolwiek = skok · przytrzymaj = szybowanie'
@@ -1714,9 +1727,14 @@ async function enableTilt() {
   if (!TC.listening) {
     TC.listening = true;
     addEventListener('deviceorientation', e => {
-      if (e.gamma == null) return;
-      const ang = (screen.orientation && screen.orientation.angle) ?? window.orientation ?? 0;
-      const raw = ang === 90 ? e.beta : (ang === -90 || ang === 270) ? -e.beta : e.gamma;
+      if (e.gamma == null || e.beta == null) return;
+      // "up" vector in device coords (W3C Z-X'-Y'' angles), then rotated into screen coords;
+      // steer = how far the screen's horizontal axis leans — stable in any grip/orientation
+      const d2r = Math.PI / 180, b = e.beta * d2r, g = e.gamma * d2r;
+      const ux = -Math.sin(g) * Math.cos(b), uy = Math.sin(b);
+      const a = (((screen.orientation && screen.orientation.angle) ?? window.orientation ?? 0)) * d2r;
+      const sx = ux * Math.cos(a) - uy * Math.sin(a);
+      const raw = Math.asin(clamp(-sx, -1, 1)) / d2r;
       TC.gotTilt = true; TC.tiltRaw = raw;
       if (TC.zero == null) TC.zero = raw;
     });
@@ -1729,11 +1747,13 @@ function updateTiltAxis() {
   if (Math.abs(d) < 2.5) d = 0; else d -= Math.sign(d) * 2.5;
   const target = clamp(d / 16, -1, 1);
   TC.axis += (Math.sign(target) * Math.pow(Math.abs(target), 0.8) - TC.axis) * 0.35;
+  $('tiltInd').firstElementChild.style.left = (50 + TC.axis * 46) + '%';
 }
 function jumpPress() { if (mode === 'play') P.jumpBuf = 0.15; }
 const layer = $('touchLayer'), stickEl = $('stick'), knob = stickEl.firstElementChild;
 layer.addEventListener('pointerdown', e => {
   e.preventDefault();
+  if (TC.wantFullscreen) { TC.wantFullscreen = false; document.documentElement.requestFullscreen?.({ navigationUI: 'hide' }).catch(() => {}); }
   if (TC.mode === 'stick' && e.clientX < innerWidth * 0.5 && TC.stickId == null) {
     TC.stickId = e.pointerId; TC.sx = e.clientX;
     stickEl.style.left = e.clientX + 'px'; stickEl.style.top = e.clientY + 'px'; stickEl.classList.remove('hidden'); knob.style.transform = 'translate(-50%,-50%)';
