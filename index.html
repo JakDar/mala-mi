@@ -369,6 +369,9 @@ const capMats = ZONES.map((z, i) => std(z.cap, i === 2 ? 0.15 : 0.8, { map: GRAI
 const matIceCap = std(0xbfeaff, 0.06, { metalness: 0.15, emissive: 0x2a6a8a, emissiveIntensity: 0.35, map: GRAIN_TEX });
 const matCrumbleCap = std(0xffffff, 0.9, { map: CRACK_TEX });
 const matCrumbleBase = std(0x9a7a4a, 0.9, { map: PLANK_TEX });
+const matCrumbleWarn = std(0xff9a6a, 0.9, { map: CRACK_TEX, emissive: 0x802000, emissiveIntensity: 0.6 });
+const debrisGeo = new THREE.BoxGeometry(1, 1, 1);
+const debrisMats = [matCrumbleBase, matCrumbleBase, matCrumbleWarn, matCrumbleBase, matCrumbleBase, matCrumbleBase];
 const matBouncy = std(0xffffff, 0.4, { map: MUSH_TEX, emissive: 0x551020, emissiveIntensity: 0.4 });
 const matMovingBase = std(0xd9a93a, 0.35, { metalness: 0.7 });
 const matFrozenCap = std(0xe2f6ff, 0.1, { emissive: 0x4aa8ff, emissiveIntensity: 0.25 });
@@ -557,6 +560,7 @@ const Snd = {
   bell() { this.tone(1318, 1.0, 'sine', 0.15); this.tone(1975, 0.8, 'sine', 0.08); this.tone(1318, 1.0, 'sine', 0.13, null, 0.28); },
   fire() { this.noise(0.9, 0.35, 900, 'bandpass'); this.tone(110, 0.8, 'sawtooth', 0.12, 60); },
   crumble() { this.noise(0.4, 0.25, 350); },
+  harmonica() { [[74, 0, .2], [76, .2, .2], [79, .4, .4], [81, .8, .2], [79, 1, .2], [76, 1.2, .4], [74, 1.6, .6]].forEach(([m, d, l]) => { this.tone(this.midi(m), l, 'sawtooth', 0.05, null, d); this.tone(this.midi(m + 12), l, 'triangle', 0.08, null, d); this.tone(this.midi(m - 5), l, 'triangle', 0.04, null, d); }); },
   freeze() { this.noise(1.2, 0.3, 4000, 'highpass'); [96, 91, 88, 84, 79].forEach((m, i) => this.tone(this.midi(m), 0.4, 'triangle', 0.15, null, i * 0.09)); },
   rocket() { this.tone(200, 1.2, 'sawtooth', 0.1, 1600); this.noise(1.2, 0.25, 2500, 'bandpass'); },
   fanfare() { [[72, 0], [76, .12], [79, .24], [84, .36], [79, .5], [84, .62]].forEach(([m, d]) => { this.tone(this.midi(m), 0.3, 'square', 0.08, null, d); this.tone(this.midi(m - 12), 0.3, 'triangle', 0.14, null, d); }); },
@@ -843,7 +847,7 @@ scene.add(iceSheet);
 //  LEVEL GENERATION
 // =====================================================================
 const levelGroup = new THREE.Group(); scene.add(levelGroup);
-let floorsMap, chilis, hats, powerups, movingPlats, crumblePlats, clouds, gen, cleanedTo, frozenTo;
+let floorsMap, chilis, hats, powerups, movingPlats, crumblePlats, debris = [], clouds, gen, cleanedTo, frozenTo;
 const FO = f => { let o = floorsMap.get(f); if (!o) { o = { plats: [], chilis: [], hats: [], powers: [], misc: [] }; floorsMap.set(f, o); } return o; };
 
 const geoCache = new Map();
@@ -946,6 +950,136 @@ function addHat(f, p) {
   hats.push(h); FO(f).hats.push(h);
 }
 
+// =====================================================================
+//  CAMEOS (Włóczykij, Ryjek, Muminek) + WALL DECOR
+// =====================================================================
+const cSkin = std(0xf3dcc0, 0.7), cWhite = std(0xfbfaf6, 0.6), cBlack = std(0x111111, 0.3);
+const cGreen = std(0x3f7d4a, 0.8), cHat = std(0x5d7a3e, 0.85), cBoot = std(0x5a3a22, 0.7), cFeather = std(0xd9483a, 0.6);
+const cSniff = std(0xa49180, 0.85), cSniffDark = std(0x6a5848, 0.8), cSilver = std(0xd0d6e0, 0.25, { metalness: 0.8 });
+const cHole = std(0x0b0d1c, 1);
+const cap = (r, l, mat, x1, y1, z1, x2, y2, z2) => {
+  const a = new THREE.Vector3(x1, y1, z1), b = new THREE.Vector3(x2, y2, z2), d = b.clone().sub(a);
+  const m = new THREE.Mesh(new THREE.CapsuleGeometry(r, d.length(), 4, 8), mat);
+  m.position.copy(a).add(b).multiplyScalar(0.5); m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize()); return m;
+};
+const ball = (r, mat, x, y, z, sx = 1, sy = 1, sz = 1) => { const m = new THREE.Mesh(new THREE.SphereGeometry(r, 16, 12), mat); m.position.set(x, y, z); m.scale.set(sx, sy, sz); return m; };
+const eyes = (g, y, z, dx, r = 0.035) => { for (const s of [-1, 1]) g.add(ball(r, cBlack, s * dx, y, z)); };
+
+function buildSnufkin() { // sits against the wall, legs dangling forward, playing the harmonica
+  const g = new THREE.Group(), up = new THREE.Group(); g.add(up);
+  for (const s of [-1, 1]) { g.add(cap(0.07, 0, cGreen, s * 0.1, 0.12, 0.05, s * 0.12, 0.12, 0.45)); g.add(ball(0.1, cBoot, s * 0.12, 0.1, 0.55, 1, 0.9, 1.4)); }
+  const coat = new THREE.Mesh(new THREE.ConeGeometry(0.34, 0.75, 14), cGreen); coat.position.y = 0.42; up.add(coat);
+  const head = new THREE.Group(); head.position.y = 0.92; up.add(head);
+  head.add(ball(0.2, cSkin, 0, 0, 0), ball(0.05, cSkin, 0, -0.02, 0.19)); eyes(head, 0.03, 0.17, 0.07, 0.025);
+  const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, 0.03, 20), cHat); brim.position.y = 0.12; brim.rotation.x = 0.12; head.add(brim);
+  const cone = new THREE.Mesh(new THREE.ConeGeometry(0.21, 0.6, 16), cHat); cone.position.set(0, 0.42, -0.04); cone.rotation.x = -0.18; head.add(cone);
+  head.add(cap(0.02, 0, cFeather, 0.17, 0.2, -0.02, 0.24, 0.42, -0.1));
+  const harm = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.05, 0.06), cSilver); harm.position.set(0, -0.1, 0.22); head.add(harm);
+  for (const s of [-1, 1]) up.add(cap(0.055, 0, cGreen, s * 0.2, 0.68, 0.02, s * 0.09, 0.82, 0.24));
+  return { g, head, up };
+}
+function buildSniff() { // small, long snout, big ears, sitting on his treasure
+  const g = new THREE.Group(), up = new THREE.Group(); g.add(up);
+  up.add(ball(0.26, cSniff, 0, 0.32, 0, 1, 1.15, 0.95));
+  const head = new THREE.Group(); head.position.y = 0.72; up.add(head);
+  head.add(ball(0.2, cSniff, 0, 0, 0), cap(0.07, 0, cSniff, 0, -0.03, 0.12, 0, -0.07, 0.36), ball(0.045, cSniffDark, 0, -0.07, 0.44));
+  eyes(head, 0.06, 0.16, 0.075);
+  for (const s of [-1, 1]) { const e = ball(0.12, cSniff, s * 0.16, 0.2, -0.02, 0.45, 1.25, 0.75); e.rotation.z = -s * 0.5; head.add(e); up.add(cap(0.045, 0, cSniff, s * 0.2, 0.42, 0.05, s * 0.06, 0.38, 0.25)); }
+  const tail = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([new THREE.Vector3(0, 0.15, -0.22), new THREE.Vector3(0.15, 0.1, -0.45), new THREE.Vector3(0.32, 0.25, -0.5)]), 12, 0.025, 6), cSniff);
+  g.add(tail, ball(0.06, cSniffDark, 0.32, 0.27, -0.5));
+  for (let i = 0; i < 9; i++) { const c = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.025, 12), goldMat); c.position.set(rand(-0.35, 0.35), 0.02 + (i % 3) * 0.025, rand(0.25, 0.5)); c.rotation.set(rand(-0.3, 0.3), 0, rand(-0.3, 0.3)); g.add(c); }
+  const chest = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.2, 0.2), cBoot); chest.position.set(0.42, 0.1, 0.2); chest.rotation.y = -0.4; g.add(chest);
+  return { g, head, up };
+}
+function buildMoomin() { // leans out of a round window in the tower wall and waves
+  const g = new THREE.Group(), up = new THREE.Group(); g.add(up);
+  const hole = new THREE.Mesh(new THREE.CircleGeometry(0.62, 28), cHole); hole.position.z = 0.02; g.add(hole);
+  const frame = new THREE.Mesh(new THREE.TorusGeometry(0.64, 0.07, 8, 28), trimMat); frame.position.z = 0.04; g.add(frame);
+  const head = new THREE.Group(); head.position.set(0, 0.05, 0.2); up.add(head);
+  head.add(ball(0.33, cWhite, 0, 0, 0), ball(0.22, cWhite, 0, -0.08, 0.27, 1, 0.85, 1.25));
+  eyes(head, 0.1, 0.27, 0.1, 0.045);
+  for (const s of [-1, 1]) { const e = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.17, 10), cWhite); e.position.set(s * 0.16, 0.33, -0.02); e.rotation.z = -s * 0.25; head.add(e); }
+  up.add(ball(0.3, cWhite, 0, -0.42, 0.05, 1, 0.8, 0.8));
+  const arm = new THREE.Group(); arm.position.set(0.28, -0.35, 0.18); up.add(arm);
+  arm.add(cap(0.07, 0, cWhite, 0, 0, 0, 0.12, 0.42, 0.05));
+  return { g, head, up, arm };
+}
+
+const CAMEOS = {
+  snufkin: { build: buildSnufkin, name: 'Włóczykij', color: '#8fe39a', hi: ['Nie spiesz się, Mi…', 'Posłuchaj tej melodii', 'Wszystko jest bardzo niepewne'], bonus: 300 },
+  sniff: { build: buildSniff, name: 'Ryjek', color: '#ffd66a', hi: ['To mój skarb! …no dobra, masz', 'Ani mi się waż… oj!', 'Znalazłem! Ja pierwszy!'], bonus: 500 },
+  moomin: { build: buildMoomin, name: 'Muminek', color: '#ffffff', hi: ['Hej, Mi! Leć wyżej!', 'Uważaj na Bukę!', 'Mamusia upiekła naleśniki!'], bonus: 200 },
+};
+let cameos = [];
+function addCameo(f, p, force) {
+  const kinds = Object.keys(CAMEOS), kind = force || (f < ZONE_FLOORS * 2 && Math.random() < 0.4 ? 'moomin' : pick(kinds)), def = CAMEOS[kind];
+  const c = { kind, def, ...def.build(), f, theta: p.center + p.half * rand(-0.5, 0.5), used: false, phase: Math.random() * 10, noteT: 0 };
+  const y = f * GAP;
+  if (kind === 'moomin') polar(c.theta, TOWER_R, y + 1.3, c.g.position);
+  else polar(c.theta, 6.15, y, c.g.position);
+  c.g.rotation.y = c.theta; c.y = y;
+  c.g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  levelGroup.add(c.g); FO(f).misc.push(c.g); cameos.push(c);
+}
+function updateCameos(dt, t) {
+  for (const c of cameos) {
+    if (!c.g.parent || Math.abs(c.y - P.y) > 25) continue;
+    const ph = t + c.phase;
+    if (c.kind === 'snufkin') {
+      c.head.rotation.z = Math.sin(ph * 4.2) * 0.12; c.up.rotation.x = Math.sin(ph * 2.1) * 0.05;
+      if ((c.noteT -= dt) < 0) { c.noteT = rand(0.5, 0.9); floatText(pick(['♪', '♫', '♬']), polar(c.theta + rand(-0.05, 0.05), 6.6, c.y + 1.3), '#8fe39a', 26, 1.6); }
+    } else if (c.kind === 'sniff') {
+      c.head.rotation.y = Math.sin(ph * 1.3) * 0.6; c.up.position.y = Math.abs(Math.sin(ph * 3)) * 0.03;
+      if (Math.random() < dt * 2) { const p = polar(c.theta + rand(-0.04, 0.04), 6.6, c.y + 0.1); emit(p.x, p.y, p.z, 0, 0.6, 0, 0xffe070, 0.15, 0.5); }
+    } else {
+      c.arm.rotation.z = -0.4 + Math.sin(ph * 7) * 0.5; c.head.rotation.z = Math.sin(ph * 1.7) * 0.12;
+      c.up.position.z = 0.05 + Math.sin(ph * 0.9) * 0.05;
+    }
+    if (c.used || P.frozen) continue;
+    const arc = Math.abs(wrapAngle(P.theta - c.theta)) * PLAYER_R;
+    if (arc < 1.6 && Math.abs(P.y - c.y) < 1.2) {
+      c.used = true;
+      const pts = c.def.bonus * mult(); addScore(pts);
+      const pos = polar(c.theta, 7, c.y + 2.2);
+      floatText(`${c.def.name}: ${pick(c.def.hi)}`, pos, c.def.color, 20, 2.4);
+      floatText(`+${pts}`, pos.clone().setY(pos.y - 0.6), c.def.color, 26, 1.4);
+      if (c.kind === 'snufkin') { Snd.harmonica(); G.icePush += 10; banner('🎵 Włóczykij gra', 'Buka zasłuchała się i zwolniła', '#8fe39a'); }
+      else if (c.kind === 'sniff') { Snd.golden(); burst(polar(c.theta, 6.6, c.y + 0.4), 30, [0xffd040, 0xfff2a0], 6, 0.3, 0.7, 8); }
+      else Snd.bell();
+    }
+  }
+}
+
+const decoGeo = {
+  lamp: new THREE.CylinderGeometry(0.12, 0.09, 0.26, 10), arm: new THREE.BoxGeometry(0.06, 0.06, 0.4), box: new THREE.BoxGeometry(1.0, 0.22, 0.28),
+  bloom: new THREE.SphereGeometry(0.09, 8, 6), leaf: new THREE.SphereGeometry(0.1, 8, 6), icicle: new THREE.ConeGeometry(0.07, 1, 7), gem: new THREE.OctahedronGeometry(0.2, 0),
+};
+const decoMat = {
+  lamp: std(0xffd890, 0.3, { emissive: 0xffa040, emissiveIntensity: 2.2 }), iron: std(0x2a2a30, 0.5, { metalness: 0.6 }), wood: std(0x8b5a2b, 0.8),
+  leaf: std(0x3f9a3a, 0.8), blooms: [0xff6fa8, 0xffd84a, 0xff5a3a, 0xc08aff].map(c => std(c, 0.6)),
+  ice: std(0xcff0ff, 0.05, { transparent: true, opacity: 0.8, emissive: 0x3a8ac0, emissiveIntensity: 0.4 }),
+  gems: [std(0xff8a3a, 0.2, { emissive: 0xff5010, emissiveIntensity: 1.6 }), std(0xb98cff, 0.2, { emissive: 0x7040ff, emissiveIntensity: 1.6 })],
+};
+function addWallDeco(f) {
+  const zi = zoneIdx(f), g = new THREE.Group(), y = f * GAP + rand(0.9, 2.0), th = Math.random() * TAU;
+  const opts = ['lamp']; if (zi <= 1) opts.push('flowers', 'flowers'); if (zi === 1 || zi === 2) opts.push('icicles', 'icicles'); if (zi >= 3) opts.push('gems', 'gems');
+  const kind = pick(opts);
+  if (kind === 'lamp') {
+    const a = new THREE.Mesh(decoGeo.arm, decoMat.iron); a.position.set(0, 0.2, 0.2); g.add(a);
+    const l = new THREE.Mesh(decoGeo.lamp, decoMat.lamp); l.position.set(0, 0.02, 0.38); g.add(l);
+  } else if (kind === 'flowers') {
+    const b = new THREE.Mesh(decoGeo.box, decoMat.wood); b.position.z = 0.14; g.add(b);
+    for (let i = 0; i < 7; i++) { const x = -0.42 + i * 0.14; const lf = new THREE.Mesh(decoGeo.leaf, decoMat.leaf); lf.position.set(x, 0.14, 0.14); g.add(lf); const bl = new THREE.Mesh(decoGeo.bloom, pick(decoMat.blooms)); bl.position.set(x + rand(-0.03, 0.03), rand(0.22, 0.32), rand(0.1, 0.2)); g.add(bl); }
+  } else if (kind === 'icicles') {
+    for (let i = 0; i < 6; i++) { const ic = new THREE.Mesh(decoGeo.icicle, decoMat.ice); const L = rand(0.4, 1.1); ic.scale.set(1, L, 1); ic.rotation.x = Math.PI; ic.position.set(-0.5 + i * 0.2, 0.6 - L / 2, 0.08); g.add(ic); }
+  } else {
+    const m = zi === 3 ? decoMat.gems[0] : decoMat.gems[1];
+    for (let i = 0; i < 4; i++) { const gm = new THREE.Mesh(decoGeo.gem, m); gm.scale.set(rand(0.6, 1), rand(1.4, 2.6), rand(0.6, 1)); gm.position.set(rand(-0.4, 0.4), rand(-0.2, 0.3), 0.1); gm.rotation.set(rand(-0.5, 0.5), rand(0, 3), rand(-0.6, 0.6)); g.add(gm); }
+  }
+  polar(th, TOWER_R, y, g.position); g.rotation.y = th; g.scale.setScalar(1.5);
+  levelGroup.add(g); FO(f).misc.push(g);
+}
+
 function signTexture(t1, t2) {
   return canvasTex(512, 180, g => {
     g.fillStyle = '#7a4a24'; roundRect(g, 6, 6, 500, 168, 26); g.fill();
@@ -1041,7 +1175,10 @@ function generateFloor(i) {
   if (i >= 6 && i - gen.lastPower >= gen.nextPowerGap && type !== 'moving' && type !== 'bouncy') {
     addPower(i, center, y + 1.4, pickPower()); gen.lastPower = i; gen.nextPowerGap = 8 + Math.floor(Math.random() * 6); hasPower = true;
   }
-  if (!hasPower && i >= 12 && type === 'normal' && arc >= 5 && Math.random() < 0.15 + 0.25 * diff) addHat(i, p);
+  let hasHat = false;
+  if (!hasPower && i >= 12 && type === 'normal' && arc >= 5 && Math.random() < 0.15 + 0.25 * diff) { addHat(i, p); hasHat = true; }
+  if (!hasPower && !hasHat && i >= gen.nextCameo && type === 'normal' && arc >= 4.5) { addCameo(i, p); gen.nextCameo = i + 14 + Math.floor(Math.random() * 14); }
+  if (i > 2 && Math.random() < 0.4) addWallDeco(i);
   if (i > 3 && Math.random() < 0.18) {
     const c2 = center - gen.dir * rand(1.4, 2.1), a2 = rand(3.5, 6);
     addPlatform(i, c2, a2 / 2 / PLAYER_R, 'normal', icy);
@@ -1064,8 +1201,8 @@ function removeFloor(f) {
 function resetWorld() {
   if (floorsMap) for (const f of [...floorsMap.keys()]) removeFloor(f);
   levelGroup.clear();
-  floorsMap = new Map(); chilis = []; hats = []; powerups = []; movingPlats = []; crumblePlats = []; clouds = [];
-  gen = { floor: -1, center: 0, halfArc: 3, dir: 1, lastPower: 0, nextPowerGap: 6, chunk: -1, prevMain: null };
+  floorsMap = new Map(); chilis = []; hats = []; powerups = []; movingPlats = []; crumblePlats = []; debris = []; cameos = []; clouds = [];
+  gen = { nextCameo: 9 + Math.floor(Math.random() * 6), floor: -1, center: 0, halfArc: 3, dir: 1, lastPower: 0, nextPowerGap: 6, chunk: -1, prevMain: null };
   cleanedTo = -40; frozenTo = -1;
   genUpTo(45);
 }
@@ -1181,7 +1318,7 @@ function land(p) {
   mi.squashV += Math.min(10, impact * 0.35); mi.bunV += impact * 0.3 * (Math.random() < 0.5 ? -1 : 1);
   if (impact > 6) { Snd.land(); const c = polar(P.theta, PLAYER_R, P.y + 0.05, new THREE.Vector3()); for (let k = 0; k < 10; k++) emit(c.x, c.y, c.z, rand(-3, 3), rand(0.3, 1.5), rand(-3, 3), p.icy ? 0xbfefff : 0xfff2dd, 0.35, 0.45, 0, 3); }
   handleFloorLanding(p.f);
-  if (p.type === 'crumble' && p.crumble < 0) { p.crumble = 0.55; Snd.crumble(); }
+  if (p.type === 'crumble' && p.crumble < 0) { p.crumble = p.crumble0 = 0.6; p.cap.material = matCrumbleWarn; Snd.crumble(); }
   if (p.type === 'bouncy') {
     P.vy = 29; P.grounded = false; P.plat = null; P.spinning = true; P.spinT = 0;
     Snd.boing(); mi.squashV += 8;
@@ -1367,16 +1504,41 @@ function updatePlatforms(dt, t) {
     p.dTheta = c - p.center; p.center = c; p.g.rotation.y = c;
   }
   for (const p of crumblePlats) {
-    if (p.dead || p.crumble < 0) continue;
-    if (p.solid) {
-      p.crumble -= dt;
-      p.g.position.x = rand(-0.06, 0.06); p.g.position.z = rand(-0.06, 0.06);
-      if (p.crumble <= 0) { p.solid = false; p.fallV = 0; const c = polar(p.center, PLAYER_R, p.y, new THREE.Vector3()); burst(c, 20, [0xd9b26a, 0x8a6a3a], 4, 0.35, 0.8, 10); }
-    } else {
-      p.fallV += 25 * dt; p.g.position.y -= p.fallV * dt; p.g.rotation.z += dt * 0.3;
-      if (p.g.position.y < p.y - 40) { p.g.visible = false; p.dead = true; }
-    }
+    if (p.dead || p.crumble < 0 || !p.solid) continue;
+    p.crumble -= dt;
+    // warning: shake grows, plank sags, dust trickles from below
+    const k = 1 - p.crumble / p.crumble0, a = 0.03 + 0.12 * k;
+    p.g.position.x = rand(-a, a); p.g.position.z = rand(-a, a); p.g.position.y = p.y - 0.12 * k * k;
+    if (Math.random() < dt * 40) { const c = polar(p.center + rand(-p.half, p.half), rand(PLAT_IN, PLAT_OUT), p.y - 0.6); emit(c.x, c.y, c.z, rand(-0.3, 0.3), -rand(0.5, 2), rand(-0.3, 0.3), 0xc9a066, 0.16, 0.6, 6); }
+    if (p.crumble <= 0) shatterPlatform(p);
   }
+  for (const d of debris) {
+    if (d.dead) continue;
+    d.life -= dt; d.v.y -= 24 * dt;
+    d.m.position.addScaledVector(d.v, dt);
+    d.m.rotation.x += d.w.x * dt; d.m.rotation.z += d.w.z * dt;
+    if (d.life < 0.35) d.m.scale.copy(d.s).multiplyScalar(Math.max(0.01, d.life / 0.35));
+    if (d.life <= 0) { levelGroup.remove(d.m); d.dead = true; }
+  }
+  if (debris.length > 80) debris = debris.filter(d => !d.dead);
+}
+
+// break a crumble plank into tumbling chunks
+function shatterPlatform(p) {
+  p.solid = false; p.dead = true; p.g.visible = false;
+  const arcLen = 2 * p.half * PLAYER_R, n = Math.max(3, Math.round(arcLen / 0.75)), rows = 3, dr = (PLAT_OUT - PLAT_IN) / rows;
+  for (let i = 0; i < n; i++) for (let j = 0; j < rows; j++) {
+    const th = p.center - p.half + p.half * 2 * (i + rand(0.3, 0.7)) / n, r = PLAT_IN + dr * (j + 0.5);
+    const m = new THREE.Mesh(debrisGeo, debrisMats);
+    const s = new THREE.Vector3(arcLen / n * rand(0.75, 0.95) * r / PLAYER_R, rand(0.4, 0.6), dr * rand(0.8, 0.95));
+    m.scale.copy(s); polar(th, r, p.y - 0.28, m.position); m.rotation.y = th; m.castShadow = true;
+    levelGroup.add(m);
+    const out = rand(0.5, 2.5), tan = rand(-1.5, 1.5);
+    const v = new THREE.Vector3(Math.sin(th) * out + Math.cos(th) * tan, rand(0.5, 3.5), Math.cos(th) * out - Math.sin(th) * tan);
+    debris.push({ m, s, v, w: new THREE.Vector3(rand(-7, 7), 0, rand(-7, 7)), life: rand(1.1, 1.7) });
+  }
+  burst(polar(p.center, PLAYER_R, p.y - 0.2), 30, [0xd9b26a, 0x8a6a3a, 0xfff2dd], 5, 0.4, 0.9, 10);
+  Snd.crumble(); cam.shake = Math.max(cam.shake, 0.15);
 }
 
 function updateIce(dt) {
@@ -1465,6 +1627,7 @@ function updateObjects(dt, t) {
     }
   }
   hatMat.emissiveIntensity = 0.15 + Math.random() * 0.25;
+  updateCameos(dt, t);
   for (const c of clouds) { if (c.dead) continue; c.theta += c.spd * dt; polar(c.theta, c.r, c.y, c.ref.position); }
 }
 
@@ -1837,7 +2000,7 @@ function tick(dt) {
     genUpTo(Math.floor(P.y / GAP) + 40);
     const minF = Math.floor((Math.min(G.iceY, P.y) - 35) / GAP);
     while (cleanedTo < minF) { removeFloor(cleanedTo); cleanedTo++; }
-    if ((G.floatTimer -= dt) < 0) { G.floatTimer = 2; chilis = chilis.filter(c => c.alive); powerups = powerups.filter(w => w.alive); hats = hats.filter(h => h.alive || h.dying > 0); movingPlats = movingPlats.filter(p => !p.dead); crumblePlats = crumblePlats.filter(p => !p.dead); clouds = clouds.filter(c => !c.dead); }
+    if ((G.floatTimer -= dt) < 0) { G.floatTimer = 2; chilis = chilis.filter(c => c.alive); powerups = powerups.filter(w => w.alive); hats = hats.filter(h => h.alive || h.dying > 0); movingPlats = movingPlats.filter(p => !p.dead); crumblePlats = crumblePlats.filter(p => !p.dead); clouds = clouds.filter(c => !c.dead); cameos = cameos.filter(c => c.g.parent); }
   } else if (mode === 'dead') {
     G.deadT += dt; updateObjects(dt, t); bubbleT -= dt;
     if (G.deadT > 1.6) gameOver();
@@ -1863,7 +2026,7 @@ $('start').classList.remove('hidden');
 frame();
 if (QS.has('autostart')) startGame();
 if (QS.has('debug')) window.__tick = (n = 1, dt = 1 / 60) => { for (let i = 0; i < n; i++) tick(dt); };
-window.__game = { P, G, TC, get hats() { return hats; }, get mode() { return mode; }, set mode(m) { mode = m; } };
+window.__game = { P, G, TC, get hats() { return hats; }, get crumbles() { return crumblePlats; }, get cameos() { return cameos; }, addCameo: (f, k) => addCameo(f, floorsMap.get(f).plats[0], k), land: p => land(p), get mode() { return mode; }, set mode(m) { mode = m; } };
 </script>
 </body>
 </html>
