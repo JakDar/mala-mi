@@ -895,6 +895,7 @@ function addPlatform(f, center, half, type, icy, ring = false) {
   }
   levelGroup.add(g);
   const p = { f, y: f * GAP, center, base0: center, half, type, icy: icy && type !== 'bouncy', ring, g, base, cap, solid: true, dTheta: 0, frozen: false, crumble: -1, fallV: 0 };
+  if ((zi === 2 || icy || (zi === 1 && Math.random() < 0.35)) && type !== 'bouncy') addIcicles(g, half);
   if (type === 'moving') { p.amp = rand(0.22, 0.45); p.spd = rand(0.6, 1.15); p.ph = Math.random() * TAU; movingPlats.push(p); }
   if (type === 'crumble') crumblePlats.push(p);
   FO(f).plats.push(p);
@@ -955,7 +956,7 @@ function addHat(f, p) {
 // =====================================================================
 const cSkin = std(0xf3dcc0, 0.7), cWhite = std(0xfbfaf6, 0.6), cBlack = std(0x111111, 0.3);
 const cGreen = std(0x3f7d4a, 0.8), cHat = std(0x5d7a3e, 0.85), cBoot = std(0x5a3a22, 0.7), cFeather = std(0xd9483a, 0.6);
-const cSniff = std(0xa49180, 0.85), cSniffDark = std(0x6a5848, 0.8), cSilver = std(0xd0d6e0, 0.25, { metalness: 0.8 });
+const cSniff = std(0xc4a27a, 0.85), cSniffDark = std(0x7a5a3e, 0.8), cSniffEar = std(0xe6a8a0, 0.8), cSilver = std(0xd0d6e0, 0.25, { metalness: 0.8 });
 const cHole = std(0x0b0d1c, 1);
 const cap = (r, l, mat, x1, y1, z1, x2, y2, z2) => {
   const a = new THREE.Vector3(x1, y1, z1), b = new THREE.Vector3(x2, y2, z2), d = b.clone().sub(a);
@@ -978,17 +979,25 @@ function buildSnufkin() { // sits against the wall, legs dangling forward, playi
   for (const s of [-1, 1]) up.add(cap(0.055, 0, cGreen, s * 0.2, 0.68, 0.02, s * 0.09, 0.82, 0.24));
   return { g, head, up };
 }
-function buildSniff() { // small, long snout, big ears, sitting on his treasure
+function buildSniff() { // kangaroo-ish: pear body, slender pointed snout, big pointy upright ears, long thin tail
   const g = new THREE.Group(), up = new THREE.Group(); g.add(up);
-  up.add(ball(0.26, cSniff, 0, 0.32, 0, 1, 1.15, 0.95));
-  const head = new THREE.Group(); head.position.y = 0.72; up.add(head);
-  head.add(ball(0.2, cSniff, 0, 0, 0), cap(0.07, 0, cSniff, 0, -0.03, 0.12, 0, -0.07, 0.36), ball(0.045, cSniffDark, 0, -0.07, 0.44));
-  eyes(head, 0.06, 0.16, 0.075);
-  for (const s of [-1, 1]) { const e = ball(0.12, cSniff, s * 0.16, 0.2, -0.02, 0.45, 1.25, 0.75); e.rotation.z = -s * 0.5; head.add(e); up.add(cap(0.045, 0, cSniff, s * 0.2, 0.42, 0.05, s * 0.06, 0.38, 0.25)); }
-  const tail = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([new THREE.Vector3(0, 0.15, -0.22), new THREE.Vector3(0.15, 0.1, -0.45), new THREE.Vector3(0.32, 0.25, -0.5)]), 12, 0.025, 6), cSniff);
-  g.add(tail, ball(0.06, cSniffDark, 0.32, 0.27, -0.5));
+  const pear = new THREE.LatheGeometry([[0.001, 0.04], [0.17, 0.06], [0.24, 0.2], [0.21, 0.4], [0.13, 0.55], [0.08, 0.62]].map(([r, y]) => new THREE.Vector2(r, y)), 18);
+  up.add(new THREE.Mesh(pear, cSniff));
+  for (const s of [-1, 1]) g.add(ball(0.07, cSniffDark, s * 0.11, 0.035, 0.12, 1, 0.55, 1.9));
+  const head = new THREE.Group(); head.position.y = 0.76; up.add(head);
+  head.add(ball(0.16, cSniff, 0, 0, 0, 1, 0.95, 1));
+  const snout = new THREE.Mesh(new THREE.ConeGeometry(0.075, 0.28, 14), cSniff); snout.rotation.x = Math.PI / 2 + 0.15; snout.position.set(0, -0.04, 0.24); head.add(snout);
+  head.add(ball(0.03, cBlack, 0, -0.06, 0.38));
+  for (const s of [-1, 1]) {
+    head.add(ball(0.032, cBlack, s * 0.07, 0.05, 0.13), ball(0.011, cWhite, s * 0.07 + 0.008, 0.062, 0.158));
+    const ear = new THREE.Mesh(new THREE.ConeGeometry(0.075, 0.34, 12), cSniff); ear.scale.z = 0.4; ear.position.set(s * 0.1, 0.27, -0.03); ear.rotation.z = -s * 0.3; head.add(ear);
+    const inner = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.24, 10), cSniffEar); inner.scale.z = 0.3; inner.position.set(s * 0.1, 0.25, -0.01); inner.rotation.z = -s * 0.3; head.add(inner);
+    up.add(cap(0.035, 0, cSniff, s * 0.15, 0.5, 0.06, s * 0.035, 0.44, 0.2));
+  }
+  const tail = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([new THREE.Vector3(0, 0.12, -0.17), new THREE.Vector3(0.25, 0.03, -0.25), new THREE.Vector3(0.52, 0.03, -0.12), new THREE.Vector3(0.64, 0.16, 0.02), new THREE.Vector3(0.58, 0.26, 0.06)]), 24, 0.022, 6), cSniff);
+  g.add(tail);
   for (let i = 0; i < 9; i++) { const c = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.025, 12), goldMat); c.position.set(rand(-0.35, 0.35), 0.02 + (i % 3) * 0.025, rand(0.25, 0.5)); c.rotation.set(rand(-0.3, 0.3), 0, rand(-0.3, 0.3)); g.add(c); }
-  const chest = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.2, 0.2), cBoot); chest.position.set(0.42, 0.1, 0.2); chest.rotation.y = -0.4; g.add(chest);
+  const chest = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.2, 0.2), cBoot); chest.position.set(-0.42, 0.1, 0.18); chest.rotation.y = 0.4; g.add(chest);
   return { g, head, up };
 }
 function buildMoomin() { // leans out of a round window in the tower wall and waves
@@ -1012,7 +1021,7 @@ const CAMEOS = {
 };
 let cameos = [];
 function addCameo(f, p, force) {
-  const kinds = Object.keys(CAMEOS), kind = force || (f < ZONE_FLOORS * 2 && Math.random() < 0.4 ? 'moomin' : pick(kinds)), def = CAMEOS[kind];
+  const kinds = Object.keys(CAMEOS), kind = force || (Math.random() < 0.22 ? 'moomin' : pick(kinds.filter(k => k !== 'moomin'))), def = CAMEOS[kind];
   const c = { kind, def, ...def.build(), f, theta: p.center + p.half * rand(-0.5, 0.5), used: false, phase: Math.random() * 10, noteT: 0 };
   const y = f * GAP;
   if (kind === 'moomin') polar(c.theta, TOWER_R, y + 1.3, c.g.position);
@@ -1060,9 +1069,17 @@ const decoMat = {
   ice: std(0xcff0ff, 0.05, { transparent: true, opacity: 0.8, emissive: 0x3a8ac0, emissiveIntensity: 0.4 }),
   gems: [std(0xff8a3a, 0.2, { emissive: 0xff5010, emissiveIntensity: 1.6 }), std(0xb98cff, 0.2, { emissive: 0x7040ff, emissiveIntensity: 1.6 })],
 };
+function addIcicles(g, half) { // hang from the plank's underside
+  const n = Math.max(2, Math.round(half * PLAYER_R * rand(0.6, 1.1)));
+  for (let i = 0; i < n; i++) {
+    const ic = new THREE.Mesh(decoGeo.icicle, decoMat.ice), L = rand(0.25, 0.85);
+    ic.scale.set(rand(0.8, 1.3), L, rand(0.8, 1.3)); ic.rotation.x = Math.PI;
+    polar(rand(-half, half) * 0.92, rand(PLAT_IN + 0.4, PLAT_OUT - 0.15), -0.66 - L / 2, ic.position); g.add(ic);
+  }
+}
 function addWallDeco(f) {
   const zi = zoneIdx(f), g = new THREE.Group(), y = f * GAP + rand(0.9, 2.0), th = Math.random() * TAU;
-  const opts = ['lamp']; if (zi <= 1) opts.push('flowers', 'flowers'); if (zi === 1 || zi === 2) opts.push('icicles', 'icicles'); if (zi >= 3) opts.push('gems', 'gems');
+  const opts = ['lamp', 'lamp']; if (zi <= 1) opts.push('flowers'); if (zi >= 3) opts.push('gems', 'gems');
   const kind = pick(opts);
   if (kind === 'lamp') {
     const a = new THREE.Mesh(decoGeo.arm, decoMat.iron); a.position.set(0, 0.2, 0.2); g.add(a);
@@ -1070,8 +1087,6 @@ function addWallDeco(f) {
   } else if (kind === 'flowers') {
     const b = new THREE.Mesh(decoGeo.box, decoMat.wood); b.position.z = 0.14; g.add(b);
     for (let i = 0; i < 7; i++) { const x = -0.42 + i * 0.14; const lf = new THREE.Mesh(decoGeo.leaf, decoMat.leaf); lf.position.set(x, 0.14, 0.14); g.add(lf); const bl = new THREE.Mesh(decoGeo.bloom, pick(decoMat.blooms)); bl.position.set(x + rand(-0.03, 0.03), rand(0.22, 0.32), rand(0.1, 0.2)); g.add(bl); }
-  } else if (kind === 'icicles') {
-    for (let i = 0; i < 6; i++) { const ic = new THREE.Mesh(decoGeo.icicle, decoMat.ice); const L = rand(0.4, 1.1); ic.scale.set(1, L, 1); ic.rotation.x = Math.PI; ic.position.set(-0.5 + i * 0.2, 0.6 - L / 2, 0.08); g.add(ic); }
   } else {
     const m = zi === 3 ? decoMat.gems[0] : decoMat.gems[1];
     for (let i = 0; i < 4; i++) { const gm = new THREE.Mesh(decoGeo.gem, m); gm.scale.set(rand(0.6, 1), rand(1.4, 2.6), rand(0.6, 1)); gm.position.set(rand(-0.4, 0.4), rand(-0.2, 0.3), 0.1); gm.rotation.set(rand(-0.5, 0.5), rand(0, 3), rand(-0.6, 0.6)); g.add(gm); }
@@ -1141,7 +1156,7 @@ function generateFloor(i) {
   const zi = zoneIdx(i), diff = Math.min(1, i / 220), y = i * GAP;
   const chunk = Math.floor(i / ZONE_FLOORS);
   if (chunk > gen.chunk) { gen.chunk = chunk; addTowerChunk(chunk); }
-  if (i % 6 === 0) { addCloud(i); if (Math.random() < 0.6) addCloud(i); }
+  if (i % 10 === 0 && Math.random() < 0.75) addCloud(i);
   if (i % ZONE_FLOORS === 0) {
     const p = addPlatform(i, gen.center, Math.PI, 'normal', false, true);
     if (i > 0) {
@@ -1178,7 +1193,7 @@ function generateFloor(i) {
   let hasHat = false;
   if (!hasPower && i >= 12 && type === 'normal' && arc >= 5 && Math.random() < 0.15 + 0.25 * diff) { addHat(i, p); hasHat = true; }
   if (!hasPower && !hasHat && i >= gen.nextCameo && type === 'normal' && arc >= 4.5) { addCameo(i, p); gen.nextCameo = i + 14 + Math.floor(Math.random() * 14); }
-  if (i > 2 && Math.random() < 0.4) addWallDeco(i);
+  if (i > 2 && Math.random() < 0.22) addWallDeco(i);
   if (i > 3 && Math.random() < 0.18) {
     const c2 = center - gen.dir * rand(1.4, 2.1), a2 = rand(3.5, 6);
     addPlatform(i, c2, a2 / 2 / PLAYER_R, 'normal', icy);
