@@ -154,7 +154,7 @@ body.touch .pw{min-width:0;padding:4px 8px 6px}body.touch .pw b{font-size:12px}
       <div>⚡ Piorun Hatifnatów (rakieta!) · ✨ Mnożnik ×2 · 🏮 Latarenka (Buka bierze ją zamiast ciebie)</div>
       <div>👻 <b>Hatifnaty</b> kopią prądem — wskocz im na głowę!</div>
       <div>🟫 kruszące się · 🟨 ruchome · 🍄 sprężyste · 🧊 śliskie platformy</div>
-      <div style="grid-column:1/-1">🥞 <b>Mama Muminka</b> goni cię z naleśnikami! Jak złapie — zabiera moce, a najedzona Mi jest wolniejsza, aż przetrawi</div>
+      <div style="grid-column:1/-1">🥞 <b>Mama Muminka</b> wyskakuje z okna i goni cię z naleśnikami (a jak zostanie w tyle — szarżuje)! Jak złapie — zabiera moce, a najedzona Mi jest wolniejsza, aż przetrawi</div>
     </div>
     <button class="btn" id="playBtn">GRAJ! 🌶️</button>
     <div class="hint desk-only">Spacja żeby zacząć · <kbd>P</kbd> pauza · <kbd>M</kbd> muzyka</div>
@@ -567,6 +567,8 @@ const Snd = {
   munch() { for (let i = 0; i < 4; i++) { this.noise(0.07, 0.25, 700, 'bandpass', i * 0.15); this.tone(240 - i * 20, 0.07, 'triangle', 0.1, 160, i * 0.15); } [76, 79, 84].forEach((m, i) => this.tone(this.midi(m), 0.25, 'sine', 0.12, null, 0.65 + i * 0.1)); },
   burp() { this.tone(120, 0.38, 'sawtooth', 0.12, 65); this.noise(0.3, 0.12, 300); },
   mamaHop() { this.tone(300, 0.09, 'sine', 0.05, 420); },
+  shutter() { this.noise(0.14, 0.4, 900, 'bandpass'); this.tone(170, 0.14, 'square', 0.08, 90); this.noise(0.1, 0.3, 1200, 'bandpass', 0.07); },
+  whoosh() { this.noise(0.5, 0.25, 1600, 'bandpass'); this.tone(280, 0.45, 'sine', 0.1, 900); },
   mamaArrive() { [[72, 0], [76, .14], [79, .28], [77, .42], [76, .56], [72, .7]].forEach(([m, d]) => this.tone(this.midi(m), 0.22, 'sine', 0.14, null, d)); },
   fanfare() { [[72, 0], [76, .12], [79, .24], [84, .36], [79, .5], [84, .62]].forEach(([m, d]) => { this.tone(this.midi(m), 0.3, 'square', 0.08, null, d); this.tone(this.midi(m - 12), 0.3, 'triangle', 0.14, null, d); }); },
   schedule() {
@@ -1301,12 +1303,12 @@ let overReady = 0;
 
 function resetGame() {
   Object.assign(P, { theta: 0, y: 0, vx: 0, vy: 0, grounded: true, plat: null, facing: 1, coyote: 0, jumpBuf: 0, stun: 0, invuln: 0, airJumps: 0, lastFloor: 0, maxFloor: 0, rocketT: 0, postRocket: 0, frozen: false, ignoreCombo: false, spinning: false, spinT: 0 });
-  Object.assign(G, { time: 0, score: 0, chilis: 0, heat: 0, fireTotal: 7, combo: 0, comboFloors: 0, comboTimer: 0, chain: 0, chainTimer: 0, powers: { fire: 0, magnet: 0, umbrella: 0, mult: 0 }, lantern: false, iceY: -8, iceActive: false, iceLevel: 0, iceTimer: 0, icePush: 0, bestCombo: 0, stomps: 0, dangerQuip: 0, floatTimer: 0, full: 0, mamaNext: 45 });
+  Object.assign(G, { time: 0, score: 0, chilis: 0, heat: 0, fireTotal: 7, combo: 0, comboFloors: 0, comboTimer: 0, chain: 0, chainTimer: 0, powers: { fire: 0, magnet: 0, umbrella: 0, mult: 0 }, lantern: false, iceY: -8, iceActive: false, iceLevel: 0, iceTimer: 0, icePush: 0, bestCombo: 0, stomps: 0, dangerQuip: 0, floatTimer: 0, full: 0, mamaNext: 40 });
   resetWorld();
   P.plat = floorsMap.get(0).plats[0];
   mi.ice.visible = false; mi.root.visible = true; mi.spin.rotation.set(0, 0, 0);
   iceSheet.visible = false; buka.visible = false;
-  trail.length = 0; Object.assign(mama, { state: 'off', hop: null, queue: [], plat: null }); mama.g.visible = false;
+  trail.length = 0; Object.assign(mama, { state: 'off', hop: null, queue: [], plat: null, win: null }); mama.g.visible = false;
   $('floatLayer').innerHTML = ''; $('msgLayer').innerHTML = '';
 }
 
@@ -1658,45 +1660,114 @@ function updateIce(dt) {
   for (const h of hats) if (h.alive && !h.frozen && h.p.y < G.iceY) { h.frozen = true; h.g.traverse(o => { if (o.material === hatMat) o.material = frozenHatMat; }); }
 }
 
-// ---- Mama Muminka: hops after Mi along her trail of landings, wants to feed her pancakes
-const FULL_DUR = 9, FULL_SLOW = 0.8;
-const mama = Object.assign(buildMamma(), { state: 'off', theta: 0, y: 0, r: PLAYER_R, dir: 1, plat: null, hop: null, queue: [], t: 0, wait: 0, callT: 0, phase: 0, vy: 0, why: '' });
+// ---- Mama Muminka: bursts out of a window of the Moomin house, then hops after Mi along her trail
+// of landings (charging in long leaps when she falls far behind), wants to feed her pancakes
+const FULL_DUR = 9, FULL_SLOW = 0.8, MAMA_CHASE = 25;
+const mama = Object.assign(buildMamma(), { state: 'off', theta: 0, y: 0, r: PLAYER_R, dir: 1, plat: null, hop: null, queue: [], t: 0, wait: 0, callT: 0, phase: 0, vy: 0, why: '', win: null, landOn: null });
 mama.g.visible = false; scene.add(mama.g);
 const trail = []; // Mi's recent landings
 const MAMA_CALLS = ['Mi! Zjedz coś!', 'Naleśniki z dżemem!', 'Kochanie, zaczekaj!', 'Jesteś taka chudziutka!', 'Tylko jeden kęs!', 'Ciepłe jeszcze!'];
+const MAMA_CHARGE = ['Już lecę, kochanie!', 'Mama nadchodzi!', 'Nie uciekniesz mi!', 'Hop, hop!'];
 const MAMA_BYE = { tired: 'Uff… zjesz później, Mi!', far: 'Ech, ta Mała Mi… zostawię na kolację', cold: 'Brr! Wracam do domu', fall: 'Ojej!', fed: 'Smacznego, kochanie!' };
 const crumbOk = c => c.plat.solid && !c.plat.dead && c.plat.y > G.iceY + 0.3;
 const crumbTheta = c => c.plat.center + c.off;
+const mamaSay = (text, size = 19, life = 1.8) => floatText(text, polar(mama.theta, PLAYER_R + 0.4, mama.y + 2.6), '#ffd0e0', size, life);
+
+// arched window with red shutters that bursts open in the tower wall
+const winArch = (w, h) => { const sh = new THREE.Shape(); sh.moveTo(-w, 0); sh.lineTo(w, 0); sh.lineTo(w, h - w); sh.absarc(0, h - w, w, 0, Math.PI, false); sh.lineTo(-w, 0); return sh; };
+const winGeo = (() => {
+  const outer = winArch(0.8, 2.3); outer.holes.push(winArch(0.66, 2.16));
+  const shut = new THREE.BoxGeometry(0.64, 1.96, 0.05); shut.translate(0.32, 0.98, 0);
+  return { inside: new THREE.ShapeGeometry(winArch(0.66, 2.16)), frame: new THREE.ExtrudeGeometry(outer, { depth: 0.08, bevelEnabled: false }), sill: new THREE.BoxGeometry(1.8, 0.1, 0.32), shut, slat: new THREE.BoxGeometry(0.5, 0.05, 0.03) };
+})();
+const matShutter = std(0xc9473c, 0.7), matShutterDark = std(0x8a2a22, 0.8);
+function buildWindow() {
+  const g = new THREE.Group(), inside = new THREE.Mesh(winGeo.inside, std(0x3a2210, 1, { emissive: 0xffa040, emissiveIntensity: 0 }));
+  inside.position.z = 0.01; g.add(inside);
+  const frame = new THREE.Mesh(winGeo.frame, trimMat); g.add(frame);
+  const sill = new THREE.Mesh(winGeo.sill, trimMat); sill.position.set(0, -0.03, 0.12); g.add(sill);
+  const shut = s => { // hinged at the side, swings outwards
+    const h = new THREE.Group(); h.position.set(-s * 0.66, 0.1, 0.09); h.scale.x = s; g.add(h);
+    h.add(new THREE.Mesh(winGeo.shut, matShutter));
+    for (let i = 0; i < 6; i++) { const sl = new THREE.Mesh(winGeo.slat, matShutterDark); sl.position.set(0.32, 0.3 + i * 0.27, 0.035); h.add(sl); }
+    return h;
+  };
+  const w = { g, inside, shutL: shut(1), shutR: shut(-1) };
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  return w;
+}
+// a spot on the wall 1–3 floors above Mi, beside her, with no plank crossing the window and a plank somewhere under it
+function platUnder(th, yTop, yMin) {
+  for (let f = Math.floor(yTop / GAP + 1e-3); f * GAP >= yMin; f--)
+    for (const p of floorsMap.get(f)?.plats || []) if (p.solid && !p.dead && p.y > G.iceY + 1 && onPlatform(p, th)) return p;
+  return null;
+}
+function findWindowSpot() {
+  const f0 = Math.round(P.y / GAP);
+  const blocked = (f, th) => (floorsMap.get(f)?.plats || []).some(p => p.ring || Math.abs(wrapAngle(th - p.center)) < p.half + 0.17);
+  for (const df of [1, 2, 3]) for (const a of [0.55, -0.55, 0.8, -0.8, 0.38, -0.38, 1.05, -1.05]) {
+    const f = f0 + df, th = P.theta + a * P.facing, below = !blocked(f + 1, th) && platUnder(th, f * GAP, P.y - 2 * GAP);
+    if (below) return { f, th, below };
+  }
+  return null;
+}
+
 function recordCrumb(p) {
   const c = { plat: p, off: wrapAngle(P.theta - p.center) };
   trail.push(c); if (trail.length > 14) trail.shift();
-  if (mama.state !== 'chase' || p === mama.plat) return;
+  if ((mama.state !== 'chase' && mama.state !== 'window') || p === mama.plat) return;
   const last = mama.queue[mama.queue.length - 1];
   if (last && last.plat === p) mama.queue[mama.queue.length - 1] = c; else mama.queue.push(c);
 }
+function mamaAppear(extra) {
+  Object.assign(mama, { queue: [], plat: null, hop: null, t: 0, wait: 0, callT: 1.2, vy: 0 }, extra);
+  mama.food.visible = true; mama.g.visible = true;
+  say('mama', true);
+}
 function spawnMama() {
+  const s = findWindowSpot();
+  if (s) { // pops out of a window above Mi
+    const w = buildWindow(), y = s.f * GAP + 0.12;
+    polar(s.th, TOWER_R + 0.03, y, w.g.position); w.g.rotation.y = s.th;
+    levelGroup.add(w.g); FO(s.f).misc.push(w.g);
+    mamaAppear({ state: 'window', win: w, landOn: s.below, theta: s.th, y, r: TOWER_R + 0.3 });
+    mama.g.visible = false; mama.g.rotation.y = s.th;
+    return;
+  }
+  // fallback: leaps up from below, onto Mi's trail a few floors down
   const ok = trail.filter(crumbOk);
   let i = ok.findLastIndex(c => c.plat.y <= P.y - 3 * GAP);
   if (i < 0) i = ok[0] && ok[0].plat.y < P.y - 0.5 ? 0 : -1;
   if (i < 0) { G.mamaNext = G.time + 4; return; } // no trail below Mi yet — retry soon
-  const m = mama, c = ok[i];
-  Object.assign(m, { state: 'chase', queue: ok.slice(i + 1), plat: null, t: 0, wait: 0, callT: 1.2, r: PLAYER_R, theta: crumbTheta(c), y: c.plat.y - 7 });
-  m.dir = Math.sign(wrapAngle(P.theta - m.theta)) || 1;
-  m.food.visible = true; m.g.visible = true; m.g.rotation.y = m.theta + m.dir * 1.15;
-  hopTo(c, 0.9);
-  banner('MAMA MUMINKA! 🥞', 'Chce cię nakarmić naleśnikami — uciekaj!', '#ffd0e0');
-  say('mama', true); Snd.mamaArrive();
+  const c = ok[i];
+  mamaAppear({ state: 'chase', r: PLAYER_R, theta: crumbTheta(c), y: c.plat.y - 7 });
+  mama.queue = ok.slice(i + 1);
+  mama.dir = Math.sign(wrapAngle(P.theta - mama.theta)) || 1; mama.g.rotation.y = mama.theta + mama.dir * 1.15;
+  hopTo(c, { T: 0.9 });
+  banner('MAMA MUMINKA! 🥞', 'Chce cię nakarmić naleśnikami — uciekaj!', '#ffd0e0'); Snd.mamaArrive();
 }
-function hopTo(c, T) {
-  const m = mama, th1 = crumbTheta(c), dTh = wrapAngle(th1 - m.theta), dy = c.plat.y - m.y;
-  T = T || clamp(0.4 + Math.hypot(dTh * PLAYER_R, dy) * 0.035, 0.45, 0.85);
-  m.hop = { c, th0: m.theta, y0: m.y, u: 0, T, H: 0.9 + Math.max(0, dy) * 0.25 };
+function hopTo(c, o = {}) {
+  const m = mama, th1 = crumbTheta(c), dTh = wrapAngle(th1 - m.theta), dy = c.plat.y - m.y, dist = Math.hypot(dTh * PLAYER_R, dy);
+  const T = o.T || (o.charge ? clamp(0.5 + dist * 0.012, 0.55, 1.0) : clamp(0.4 + dist * 0.035, 0.45, 0.85));
+  m.hop = { c, th0: m.theta, y0: m.y, r0: m.r, u: 0, T, H: o.H || (o.charge ? 1.4 + Math.max(0, dy) * 0.12 : 0.9 + Math.max(0, dy) * 0.25), charge: !!o.charge };
   m.plat = null; if (Math.abs(dTh) > 0.02) m.dir = Math.sign(dTh);
+  if (o.charge) { mamaSay(`SZARŻA! ${pick(MAMA_CHARGE)}`, 22, 1.6); Snd.whoosh(); }
+}
+// long fast leap to the second-newest landing of Mi (or just short of her, if she has only one)
+function chargeAlongTrail() {
+  const q = mama.queue, n = q.length, c = n >= 2 ? q[n - 2] : shortOf(q[0].plat);
+  q.splice(0, n - 1); if (n < 2) q.length = 0;
+  hopTo(c, { charge: true });
+}
+// the spot on Mi's plank a couple of metres short of her, on mama's side
+function shortOf(p) {
+  const side = Math.sign(wrapAngle(mama.theta - P.theta)) || 1, lim = p.half - 0.4 / PLAYER_R;
+  const off = wrapAngle(P.theta - p.center) + side * 2.2 / PLAYER_R;
+  return { plat: p, off: p.ring ? off : clamp(off, -lim, lim) };
 }
 function mamaLeave(why) {
   const m = mama; m.state = 'leave'; m.why = why; m.t = 0; m.hop = null; m.vy = 0;
-  const head = polar(m.theta, PLAYER_R + 0.4, m.y + 2.6);
-  floatText(`Mama Muminka: ${MAMA_BYE[why]}`, head, '#ffd0e0', 19, 2.4);
+  mamaSay(`Mama Muminka: ${MAMA_BYE[why]}`, 19, 2.4);
   if (why !== 'fed') {
     const pts = 200 * mult(); addScore(pts);
     banner('Mama Muminka odpuściła 💕', `Uff… nie dałaś się nakarmić · +${pts} pkt`, '#ffd0e0'); say('mamaGone', true);
@@ -1721,35 +1792,64 @@ function updateMama(dt, t) {
   }
   m.t += dt;
   let running = false;
-  if (m.state === 'chase') {
+  if (m.state === 'window') { // shutters bang open, she leans out with the plate, then jumps down
+    const w = m.win, o = Math.min(1, m.t / 0.3), open = (1 - (1 - o) ** 3) * 2.5;
+    w.shutL.rotation.y = -open; w.shutR.rotation.y = open; w.inside.material.emissiveIntensity = 0.7 * o;
+    if (m.t > 0.12 && !m.g.visible) {
+      m.g.visible = true; Snd.shutter(); Snd.mamaArrive();
+      burst(polar(m.theta, TOWER_R + 0.6, m.y + 1.1), 24, [0xffffff, 0xffe0b0, 0xc9473c], 5, 0.3, 0.6, 4);
+    }
+    if (m.t > 0.5 && m.callT > 1) { m.callT = 0; mamaSay('Mi! Obiad gotowy!', 22, 1.6); }
+    if (m.t > 1.3) {
+      const p = m.landOn;
+      while (m.queue.length && !crumbOk(m.queue[0])) m.queue.shift();
+      m.state = 'chase'; m.t = 0; m.callT = 1.5;
+      banner('MAMA MUMINKA! 🥞', 'Wyskoczyła z okna z naleśnikami — uciekaj!', '#ffd0e0');
+      if (P.y - m.y > 2 * GAP && m.queue.length) chargeAlongTrail(); // Mi already got away: straight after her
+      else if (p.solid && !p.dead) { const lim = p.half - 0.4 / PLAYER_R, off = wrapAngle(m.theta - p.center); hopTo({ plat: p, off: p.ring ? off : clamp(off, -lim, lim) }, { T: 0.75, H: 1.3 }); }
+      else { m.state = 'off'; m.g.visible = false; G.mamaNext = G.time + 3; return; }
+    }
+  } else if (m.state === 'chase') {
     while (m.queue.length && !crumbOk(m.queue[0])) m.queue.shift();
     if (!m.hop) {
       if (m.plat && !m.plat.dead) { m.theta += m.plat.dTheta; m.y = m.plat.y; }
-      if ((m.wait -= dt) <= 0 && m.queue.length) {
-        let c = m.queue.shift();
-        if (m.queue.length > 5) c = m.queue.shift(); // Mi is far ahead: skip a step
-        hopTo(c);
-      } else if (!m.plat || !m.plat.solid) { mamaLeave('fall'); m.vy = 0; }
-      else { // trot along her plank towards Mi
-        const p = m.plat, lim = p.half - 0.5 / PLAYER_R;
-        const d = p.ring ? wrapAngle(P.theta - m.theta) : clamp(wrapAngle(P.theta - p.center), -lim, lim) - wrapAngle(m.theta - p.center);
-        if (Math.abs(d) > 0.01) { m.dir = Math.sign(d); m.theta += m.dir * Math.min(Math.abs(d), 6.8 / PLAYER_R * dt); running = true; }
+      const far = P.y - m.y > 3 * GAP, n = m.queue.length;
+      if ((m.wait -= dt) > 0) { /* catching her breath */ }
+      else if (n) {
+        if (far) chargeAlongTrail(); else hopTo(m.queue.shift());
+      } else if (P.grounded && P.plat && P.plat !== m.plat && P.plat.solid && !P.plat.dead) {
+        // off Mi's trail (e.g. fresh out of the window): jump straight for her plank
+        const p = P.plat;
+        hopTo(far ? shortOf(p) : { plat: p, off: wrapAngle(P.theta - p.center) }, { charge: far });
       }
+    }
+    if (!m.hop && m.wait <= 0 && (!m.plat || !m.plat.solid)) { mamaLeave('fall'); m.vy = 0; }
+    else if (!m.hop && m.plat) { // trot along her plank towards Mi
+      const p = m.plat, lim = p.half - 0.5 / PLAYER_R;
+      const d = p.ring ? wrapAngle(P.theta - m.theta) : clamp(wrapAngle(P.theta - p.center), -lim, lim) - wrapAngle(m.theta - p.center);
+      if (Math.abs(d) > 0.01) { m.dir = Math.sign(d); m.theta += m.dir * Math.min(Math.abs(d), 6.8 / PLAYER_R * dt); running = true; }
     }
     if (m.hop) {
       const h = m.hop, c = h.c; h.u = Math.min(1, h.u + dt / h.T);
       const dTh = wrapAngle(crumbTheta(c) - h.th0), y1 = c.plat.y;
-      m.theta = h.th0 + dTh * h.u; m.y = lerp(h.y0, y1, h.u) + h.H * 4 * h.u * (1 - h.u);
-      if (h.u >= 1) { m.hop = null; m.plat = c.plat; m.y = y1; m.wait = 0.12; Snd.mamaHop(); }
+      m.theta = h.th0 + dTh * h.u; m.y = lerp(h.y0, y1, h.u) + h.H * 4 * h.u * (1 - h.u); m.r = lerp(h.r0, PLAYER_R, h.u);
+      if (h.charge) for (let k = 0; k < 3; k++) { const p = polar(m.theta + rand(-0.03, 0.03), m.r + rand(-0.3, 0.3), m.y + rand(0.3, 1.8)); emit(p.x, p.y, p.z, rand(-0.4, 0.4), rand(-1, 0), rand(-0.4, 0.4), pick([0xffffff, 0xffb0c8, 0xff7aa8]), rand(0.25, 0.45), 0.5, 0, 2); }
+      if (h.u >= 1) {
+        m.hop = null; m.plat = c.plat; m.y = y1; m.r = PLAYER_R;
+        const near = Math.abs(P.y - m.y) < GAP && Math.abs(wrapAngle(P.theta - m.theta)) * PLAYER_R < 5;
+        m.wait = m.y < G.iceY + 3 ? 0 : h.charge ? 0.4 : near ? 0.3 : 0.12; // no need to rush once she's close; flee the ice at once
+        Snd.mamaHop(); if (h.charge) { cam.shake = Math.max(cam.shake, 0.12); burst(polar(m.theta, PLAYER_R, m.y + 0.1), 16, [0xffffff, 0xfff2dd], 5, 0.3, 0.5, 6); }
+      }
     }
-    if ((m.callT -= dt) <= 0) { m.callT = rand(2.2, 3.2); floatText(pick(MAMA_CALLS), polar(m.theta, PLAYER_R + 0.4, m.y + 2.6), '#ffd0e0', 19, 1.8); }
+    if ((m.callT -= dt) <= 0) { m.callT = rand(2.2, 3.2); mamaSay(pick(MAMA_CALLS)); }
     if (Math.random() < dt * 4 && m.food.visible) { const p = m.food.getWorldPosition(_tmp); emit(p.x, p.y + 0.2, p.z, rand(-0.2, 0.2), 1.2, rand(-0.2, 0.2), 0xffffff, 0.22, 0.8, -0.5, 1); }
     const arc = Math.abs(wrapAngle(P.theta - m.theta)) * PLAYER_R, dy = P.y - m.y;
-    if (arc < 0.9 && dy > -1.2 && dy < 1.7 && P.invuln <= 0 && P.rocketT <= 0 && !P.frozen) mamaCatch();
+    if (m.state !== 'chase') { /* fell off */ }
+    else if (arc < 0.9 && dy > -1.2 && dy < 1.7 && P.invuln <= 0 && P.rocketT <= 0 && !P.frozen) mamaCatch();
     else if (!m.hop) {
-      if (m.y < G.iceY + 0.3) mamaLeave('cold');
-      else if (P.y - m.y > 22) mamaLeave('far');
-      else if (m.t > 22) mamaLeave('tired');
+      if (m.y < G.iceY - 0.2) mamaLeave('cold');
+      else if (P.y - m.y > 40) mamaLeave('far');
+      else if (m.t > MAMA_CHASE) mamaLeave('tired');
     }
   } else { // leave: wave goodbye, then hop off the tower and drop out of sight
     if (m.why === 'fed' && Math.random() < dt * 6) { const p = polar(m.theta, PLAYER_R + 0.3, m.y + 2.2); emit(p.x, p.y, p.z, rand(-0.5, 0.5), 1.5, rand(-0.5, 0.5), 0xff7aa8, 0.35, 1, -0.5, 1); }
@@ -1757,16 +1857,17 @@ function updateMama(dt, t) {
       if (!m.vy && m.r === PLAYER_R) m.vy = 6;
       m.r += 2.6 * dt; m.vy -= 22 * dt; m.y += m.vy * dt;
     }
-    if (m.t > 4.5) { m.state = 'off'; m.g.visible = false; G.mamaNext = G.time + rand(55, 85); return; }
+    if (m.t > 4.5) { m.state = 'off'; m.g.visible = false; G.mamaNext = G.time + rand(35, 60); return; }
   }
   // pose
-  const waving = m.state === 'leave' && m.r === PLAYER_R;
+  const waving = m.state === 'leave' && m.r === PLAYER_R, inWindow = m.state === 'window';
   polar(m.theta, m.r, m.y, m.g.position);
-  m.g.rotation.y += (m.theta + (waving ? 0 : m.dir * 1.15) - m.g.rotation.y) * damp(10, dt);
+  m.g.rotation.y += (m.theta + (waving || inWindow ? 0 : m.dir * 1.15) - m.g.rotation.y) * damp(10, dt);
   const L = m.legL.rotation, R = m.legR.rotation, A = m.armR.rotation, k = damp(14, dt);
   m.phase += dt * (running ? 14 : 0);
-  if (m.hop || m.vy) { L.x += (-0.7 - L.x) * k; R.x += (0.35 - R.x) * k; m.body.rotation.x = 0.12; }
+  if (m.hop || m.vy) { L.x += (-0.7 - L.x) * k; R.x += (0.35 - R.x) * k; m.body.rotation.x = m.hop?.charge ? 0.35 : 0.12; }
   else if (running) { L.x = Math.sin(m.phase) * 0.7; R.x = -L.x; m.body.rotation.x = 0.1; }
+  else if (inWindow) { L.x = R.x = 0; m.body.rotation.x = 0.22 + Math.sin(t * 5) * 0.05; } // leaning out over the sill
   else { L.x += -L.x * k; R.x += -R.x * k; m.body.rotation.x *= 1 - k; }
   m.body.position.y = running ? Math.abs(Math.sin(m.phase)) * 0.06 : 0;
   m.body.rotation.z = running ? Math.sin(m.phase) * 0.06 : 0;
