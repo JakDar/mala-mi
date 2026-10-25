@@ -154,6 +154,7 @@ body.touch .pw{min-width:0;padding:4px 8px 6px}body.touch .pw b{font-size:12px}
       <div>⚡ Piorun Hatifnatów (rakieta!) · ✨ Mnożnik ×2 · 🏮 Latarenka (Buka bierze ją zamiast ciebie)</div>
       <div>👻 <b>Hatifnaty</b> kopią prądem — wskocz im na głowę!</div>
       <div>🟫 kruszące się · 🟨 ruchome · 🍄 sprężyste · 🧊 śliskie platformy</div>
+      <div style="grid-column:1/-1">🥞 <b>Mama Muminka</b> goni cię z naleśnikami! Jak złapie — zabiera moce, a najedzona Mi jest wolniejsza, aż przetrawi</div>
     </div>
     <button class="btn" id="playBtn">GRAJ! 🌶️</button>
     <div class="hint desk-only">Spacja żeby zacząć · <kbd>P</kbd> pauza · <kbd>M</kbd> muzyka</div>
@@ -563,6 +564,10 @@ const Snd = {
   harmonica() { [[74, 0, .2], [76, .2, .2], [79, .4, .4], [81, .8, .2], [79, 1, .2], [76, 1.2, .4], [74, 1.6, .6]].forEach(([m, d, l]) => { this.tone(this.midi(m), l, 'sawtooth', 0.05, null, d); this.tone(this.midi(m + 12), l, 'triangle', 0.08, null, d); this.tone(this.midi(m - 5), l, 'triangle', 0.04, null, d); }); },
   freeze() { this.noise(1.2, 0.3, 4000, 'highpass'); [96, 91, 88, 84, 79].forEach((m, i) => this.tone(this.midi(m), 0.4, 'triangle', 0.15, null, i * 0.09)); },
   rocket() { this.tone(200, 1.2, 'sawtooth', 0.1, 1600); this.noise(1.2, 0.25, 2500, 'bandpass'); },
+  munch() { for (let i = 0; i < 4; i++) { this.noise(0.07, 0.25, 700, 'bandpass', i * 0.15); this.tone(240 - i * 20, 0.07, 'triangle', 0.1, 160, i * 0.15); } [76, 79, 84].forEach((m, i) => this.tone(this.midi(m), 0.25, 'sine', 0.12, null, 0.65 + i * 0.1)); },
+  burp() { this.tone(120, 0.38, 'sawtooth', 0.12, 65); this.noise(0.3, 0.12, 300); },
+  mamaHop() { this.tone(300, 0.09, 'sine', 0.05, 420); },
+  mamaArrive() { [[72, 0], [76, .14], [79, .28], [77, .42], [76, .56], [72, .7]].forEach(([m, d]) => this.tone(this.midi(m), 0.22, 'sine', 0.14, null, d)); },
   fanfare() { [[72, 0], [76, .12], [79, .24], [84, .36], [79, .5], [84, .62]].forEach(([m, d]) => { this.tone(this.midi(m), 0.3, 'square', 0.08, null, d); this.tone(this.midi(m - 12), 0.3, 'triangle', 0.14, null, d); }); },
   schedule() {
     if (!this.ctx) return;
@@ -609,7 +614,9 @@ function buildMi() {
   M.legL = mkLeg(-0.1); M.legR = mkLeg(0.1);
 
   const prof = [new V2(0, 0.24), new V2(0.44, 0.24), new V2(0.47, 0.28), new V2(0.37, 0.5), new V2(0.26, 0.74), new V2(0.17, 0.91), new V2(0.12, 0.97), new V2(0, 0.985)];
-  body.add(new THREE.Mesh(new THREE.LatheGeometry(prof, 28), dressMat));
+  M.dress = new THREE.Mesh(new THREE.LatheGeometry(prof, 28), dressMat); body.add(M.dress);
+  // round full tummy, only shown after Mama Muminka has fed her
+  M.belly = new THREE.Mesh(new THREE.SphereGeometry(0.34, 22, 16), dressMat); M.belly.position.set(0, 0.56, 0.05); M.belly.visible = false; body.add(M.belly);
 
   const armGeo = new THREE.CylinderGeometry(0.038, 0.034, 0.32, 8); armGeo.translate(0, -0.16, 0);
   const handGeo = new THREE.SphereGeometry(0.056, 10, 8);
@@ -617,7 +624,7 @@ function buildMi() {
   M.armL = mkArm(-0.15, -1); M.armR = mkArm(0.15, 1);
 
   const head = M.head = new THREE.Group(); head.position.y = 1.2; body.add(head);
-  const skull = new THREE.Mesh(new THREE.SphereGeometry(0.3, 28, 20), skin); skull.scale.set(1.05, 0.95, 1); head.add(skull);
+  const skull = M.skull = new THREE.Mesh(new THREE.SphereGeometry(0.3, 28, 20), skin); skull.scale.set(1.05, 0.95, 1); head.add(skull);
   const hairCap = new THREE.Mesh(new THREE.SphereGeometry(0.322, 28, 16, 0, TAU, 0, Math.PI * 0.52), hairMat);
   hairCap.rotation.x = -0.5; hairCap.scale.set(1.06, 0.97, 1.02); head.add(hairCap);
   const bunG = M.bun = new THREE.Group(); bunG.position.set(0, 0.26, -0.05); head.add(bunG);
@@ -671,7 +678,8 @@ function buildMi() {
   M.grin.add(grinMouth, teeth, tongue);
   M.grin.position.copy(onFace(0.0, -0.115, 0.003)); M.grin.rotation.x = -0.42; M.grin.visible = false;
   const nose = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 6), skin); nose.position.set(0, -0.05, 0.3); head.add(nose);
-  for (const x of [-0.18, 0.18]) { const c = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 8), cheekMat); c.scale.set(1, 0.6, 0.3); c.position.set(x, -0.07, 0.225); c.rotation.y = x * 2; head.add(c); }
+  M.cheeks = [];
+  for (const x of [-0.18, 0.18]) { const c = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 8), cheekMat); c.scale.set(1, 0.6, 0.3); c.position.set(x, -0.07, 0.225); c.rotation.y = x * 2; head.add(c); M.cheeks.push(c); }
 
   // umbrella (power-up)
   const umb = M.umb = new THREE.Group();
@@ -688,7 +696,7 @@ function buildMi() {
   M.ice.position.y = 1.05; M.ice.visible = false; root.add(M.ice);
 
   M.root = root; M.spin = spin; M.body = body;
-  M.phase = 0; M.blink = 2; M.bunA = 0; M.bunV = 0; M.squash = 0; M.squashV = 0;
+  M.phase = 0; M.fat = 0; M.blink = 2; M.bunA = 0; M.bunV = 0; M.squash = 0; M.squashV = 0;
   cast(body);
   return M;
 }
@@ -1031,6 +1039,41 @@ function buildMoomin() { // leans out of a round window in the tower wall and wa
   arm.add(cap(0.07, 0, cWhite, 0, 0, 0, 0.12, 0.42, 0.05));
   return { g, head, up, arm };
 }
+const STRIPE_TEX = canvasTex(256, 16, (g, w) => { for (let i = 0; i < 14; i++) { g.fillStyle = i % 2 ? '#fbfaf6' : '#d8323c'; g.fillRect(i * w / 14, 0, w / 14 + 1, 16); } });
+const cApron = std(0xffffff, 0.75, { map: STRIPE_TEX, side: THREE.DoubleSide }), cBag = std(0x1b1b22, 0.35), cClasp = std(0xe8c050, 0.3, { metalness: 0.8 });
+const cPlate = std(0xf4f0e6, 0.3), cPancake = std(0xd9973e, 0.7), cJam = std(0xc0182a, 0.25, { emissive: 0x400008, emissiveIntensity: 0.4 });
+function buildMamma() { // Mama Muminka: pear-shaped white Moomin, red-striped apron, black handbag, plate of pancakes held out for Mi
+  const g = new THREE.Group(), body = new THREE.Group(); g.add(body);
+  const prof = [[0.001, 0.2], [0.32, 0.22], [0.47, 0.36], [0.55, 0.62], [0.53, 0.9], [0.45, 1.15], [0.36, 1.36], [0.24, 1.52], [0.001, 1.58]].map(([r, y]) => new V2(r, y));
+  body.add(new THREE.Mesh(new THREE.LatheGeometry(prof, 28), cWhite));
+  // apron: front slice of the same lathe, a hair larger, from the hem up to the chest
+  body.add(new THREE.Mesh(new THREE.LatheGeometry(prof.slice(1, 6).map(v => new V2(v.x * 1.03 + 0.012, v.y)), 18, -1.05, 2.1), cApron));
+  const tie = new THREE.Mesh(new THREE.TorusGeometry(0.548, 0.022, 6, 32), std(0xd8323c, 0.6)); tie.rotation.x = Math.PI / 2; tie.position.y = 0.98; body.add(tie);
+  for (const s of [-1, 1]) body.add(ball(0.07, cApron, s * 0.08, 0.98, -0.53, 1.2, 0.8, 0.6));
+  const head = new THREE.Group(); head.position.set(0, 1.62, 0.02); body.add(head);
+  head.add(ball(0.4, cWhite, 0, 0.12, 0, 1, 0.95, 0.95), ball(0.3, cWhite, 0, -0.07, 0.36, 0.95, 0.8, 1.15)); // cranium + big round snout
+  for (const s of [-1, 1]) {
+    head.add(ball(0.042, cBlack, s * 0.13, 0.26, 0.33, 0.8, 1.3, 0.5));
+    const ear = new THREE.Mesh(new THREE.ConeGeometry(0.075, 0.18, 10), cWhite); ear.position.set(s * 0.17, 0.5, -0.06); ear.rotation.z = -s * 0.3; head.add(ear);
+  }
+  const mkLeg = s => { const l = new THREE.Group(); l.position.set(s * 0.21, 0.32, 0); l.add(cap(0.1, 0, cWhite, 0, 0, 0, 0, -0.18, 0), ball(0.12, cWhite, 0, -0.26, 0.06, 1, 0.55, 1.4)); g.add(l); return l; };
+  const mkArm = s => { const a = new THREE.Group(); a.position.set(s * 0.44, 1.2, 0.04); a.add(cap(0.075, 0, cWhite, 0, 0, 0, s * 0.06, -0.38, 0)); body.add(a); return a; };
+  const legL = mkLeg(-1), legR = mkLeg(1), armL = mkArm(-1), armR = mkArm(1);
+  // the handbag never leaves her arm
+  const bag = new THREE.Group(); bag.position.set(-0.07, -0.5, 0.02); armL.add(bag);
+  const box = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.22, 0.11), cBag); box.position.y = -0.1; bag.add(box);
+  const handle = new THREE.Mesh(new THREE.TorusGeometry(0.08, 0.016, 6, 16, Math.PI), cBag); handle.position.y = 0.01; bag.add(handle);
+  const clasp = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.035, 0.02), cClasp); clasp.position.set(0, -0.02, 0.06); bag.add(clasp);
+  // plate held out level in the other hand (counter-rotated every frame)
+  const plate = new THREE.Group(); plate.position.set(0.06, -0.46, 0); plate.rotation.order = 'ZYX'; armR.add(plate);
+  plate.add(new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.18, 0.03, 22), cPlate));
+  const food = new THREE.Group(); plate.add(food);
+  for (let i = 0; i < 3; i++) { const pc = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.04, 18), cPancake); pc.position.set(rand(-0.015, 0.015), 0.04 + i * 0.042, rand(-0.015, 0.015)); food.add(pc); }
+  food.add(ball(0.08, cJam, 0, 0.16, 0, 1, 0.4, 1));
+  g.add(cap(0.04, 0, cWhite, 0, 0.42, -0.5, 0, 0.3, -0.76), ball(0.07, cWhite, 0, 0.28, -0.8));
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  return { g, body, head, legL, legR, armL, armR, plate, food };
+}
 
 const CAMEOS = {
   snufkin: { build: buildSnufkin, name: 'Włóczykij', color: '#8fe39a', hi: ['Nie spiesz się, Mi…', 'Posłuchaj tej melodii', 'Wszystko jest bardzo niepewne'], bonus: 300 },
@@ -1258,11 +1301,12 @@ let overReady = 0;
 
 function resetGame() {
   Object.assign(P, { theta: 0, y: 0, vx: 0, vy: 0, grounded: true, plat: null, facing: 1, coyote: 0, jumpBuf: 0, stun: 0, invuln: 0, airJumps: 0, lastFloor: 0, maxFloor: 0, rocketT: 0, postRocket: 0, frozen: false, ignoreCombo: false, spinning: false, spinT: 0 });
-  Object.assign(G, { time: 0, score: 0, chilis: 0, heat: 0, fireTotal: 7, combo: 0, comboFloors: 0, comboTimer: 0, chain: 0, chainTimer: 0, powers: { fire: 0, magnet: 0, umbrella: 0, mult: 0 }, lantern: false, iceY: -8, iceActive: false, iceLevel: 0, iceTimer: 0, icePush: 0, bestCombo: 0, stomps: 0, dangerQuip: 0, floatTimer: 0 });
+  Object.assign(G, { time: 0, score: 0, chilis: 0, heat: 0, fireTotal: 7, combo: 0, comboFloors: 0, comboTimer: 0, chain: 0, chainTimer: 0, powers: { fire: 0, magnet: 0, umbrella: 0, mult: 0 }, lantern: false, iceY: -8, iceActive: false, iceLevel: 0, iceTimer: 0, icePush: 0, bestCombo: 0, stomps: 0, dangerQuip: 0, floatTimer: 0, full: 0, mamaNext: 45 });
   resetWorld();
   P.plat = floorsMap.get(0).plats[0];
   mi.ice.visible = false; mi.root.visible = true; mi.spin.rotation.set(0, 0, 0);
   iceSheet.visible = false; buka.visible = false;
+  trail.length = 0; Object.assign(mama, { state: 'off', hop: null, queue: [], plat: null }); mama.g.visible = false;
   $('floatLayer').innerHTML = ''; $('msgLayer').innerHTML = '';
 }
 
@@ -1303,6 +1347,9 @@ const QUIPS = {
   power: ['Ooo, co to?', 'Super!', 'Mam to!', 'Hehehe!'],
   danger: ['Spadaj, Buko!', 'Zimno mi w pięty!', 'Szybciej, szybciej!', 'Brrr!'],
   milestone: ['Wyżej! Jeszcze wyżej!', 'Ale widok!', 'Muminki by się bały!'],
+  mama: ['Mamo, nie jestem głodna!', 'Nie chcę naleśników!', 'Później zjem!', 'O nie, Mama Muminka!'],
+  full: ['Uff… ale się najadłam', 'Ciężko mi…', 'Hyk!', 'Za dużo dżemu…'],
+  mamaGone: ['Uff, zwiałam!', 'Ha! Nie dałam się nakarmić!', 'Na kolację, mamo!'],
 };
 let bubbleT = 0;
 function say(kind, force = false) {
@@ -1354,6 +1401,7 @@ function land(p) {
   mi.squashV += Math.min(10, impact * 0.35); mi.bunV += impact * 0.3 * (Math.random() < 0.5 ? -1 : 1);
   if (impact > 6) { Snd.land(); const c = polar(P.theta, PLAYER_R, P.y + 0.05, new THREE.Vector3()); for (let k = 0; k < 10; k++) emit(c.x, c.y, c.z, rand(-3, 3), rand(0.3, 1.5), rand(-3, 3), p.icy ? 0xbfefff : 0xfff2dd, 0.35, 0.45, 0, 3); }
   handleFloorLanding(p.f);
+  if (mode === 'play') recordCrumb(p);
   if (p.type === 'crumble' && p.crumble < 0) { p.crumble = p.crumble0 = 0.6; p.cap.material = matCrumbleWarn; Snd.crumble(); }
   if (p.type === 'bouncy') {
     P.vy = 29; P.grounded = false; P.plat = null; P.spinning = true; P.spinT = 0;
@@ -1486,10 +1534,10 @@ function updatePlayer(dt) {
   let input = (right() ? 1 : 0) - (left() ? 1 : 0), mag = 1;
   if (!input && Math.abs(TC.axis) > 0.04) { input = Math.sign(TC.axis); mag = Math.abs(TC.axis); }
   if (P.stun > 0) input = 0;
-  const fire = G.powers.fire > 0, maxS = MAX_SPEED * (fire ? 1.25 : 1);
+  const fire = G.powers.fire > 0, full = G.full > 0 ? FULL_SLOW : 1, maxS = MAX_SPEED * (fire ? 1.25 : 1) * full;
   const icy = P.grounded && P.plat && P.plat.icy;
   if (input) {
-    const acc = P.grounded ? (icy ? 13 : 34) : 24;
+    const acc = (P.grounded ? (icy ? 13 : 34) : 24) * (full < 1 ? 0.85 : 1);
     const turning = P.vx !== 0 && Math.sign(P.vx) !== input;
     if (mag < 1 && !turning && Math.abs(P.vx) > maxS * mag) P.vx -= input * Math.min(acc * dt, Math.abs(P.vx) - maxS * mag);
     else P.vx += input * acc * (turning && !icy ? 1.9 : 1) * dt;
@@ -1610,6 +1658,125 @@ function updateIce(dt) {
   for (const h of hats) if (h.alive && !h.frozen && h.p.y < G.iceY) { h.frozen = true; h.g.traverse(o => { if (o.material === hatMat) o.material = frozenHatMat; }); }
 }
 
+// ---- Mama Muminka: hops after Mi along her trail of landings, wants to feed her pancakes
+const FULL_DUR = 9, FULL_SLOW = 0.8;
+const mama = Object.assign(buildMamma(), { state: 'off', theta: 0, y: 0, r: PLAYER_R, dir: 1, plat: null, hop: null, queue: [], t: 0, wait: 0, callT: 0, phase: 0, vy: 0, why: '' });
+mama.g.visible = false; scene.add(mama.g);
+const trail = []; // Mi's recent landings
+const MAMA_CALLS = ['Mi! Zjedz coś!', 'Naleśniki z dżemem!', 'Kochanie, zaczekaj!', 'Jesteś taka chudziutka!', 'Tylko jeden kęs!', 'Ciepłe jeszcze!'];
+const MAMA_BYE = { tired: 'Uff… zjesz później, Mi!', far: 'Ech, ta Mała Mi… zostawię na kolację', cold: 'Brr! Wracam do domu', fall: 'Ojej!', fed: 'Smacznego, kochanie!' };
+const crumbOk = c => c.plat.solid && !c.plat.dead && c.plat.y > G.iceY + 0.3;
+const crumbTheta = c => c.plat.center + c.off;
+function recordCrumb(p) {
+  const c = { plat: p, off: wrapAngle(P.theta - p.center) };
+  trail.push(c); if (trail.length > 14) trail.shift();
+  if (mama.state !== 'chase' || p === mama.plat) return;
+  const last = mama.queue[mama.queue.length - 1];
+  if (last && last.plat === p) mama.queue[mama.queue.length - 1] = c; else mama.queue.push(c);
+}
+function spawnMama() {
+  const ok = trail.filter(crumbOk);
+  let i = ok.findLastIndex(c => c.plat.y <= P.y - 3 * GAP);
+  if (i < 0) i = ok[0] && ok[0].plat.y < P.y - 0.5 ? 0 : -1;
+  if (i < 0) { G.mamaNext = G.time + 4; return; } // no trail below Mi yet — retry soon
+  const m = mama, c = ok[i];
+  Object.assign(m, { state: 'chase', queue: ok.slice(i + 1), plat: null, t: 0, wait: 0, callT: 1.2, r: PLAYER_R, theta: crumbTheta(c), y: c.plat.y - 7 });
+  m.dir = Math.sign(wrapAngle(P.theta - m.theta)) || 1;
+  m.food.visible = true; m.g.visible = true; m.g.rotation.y = m.theta + m.dir * 1.15;
+  hopTo(c, 0.9);
+  banner('MAMA MUMINKA! 🥞', 'Chce cię nakarmić naleśnikami — uciekaj!', '#ffd0e0');
+  say('mama', true); Snd.mamaArrive();
+}
+function hopTo(c, T) {
+  const m = mama, th1 = crumbTheta(c), dTh = wrapAngle(th1 - m.theta), dy = c.plat.y - m.y;
+  T = T || clamp(0.4 + Math.hypot(dTh * PLAYER_R, dy) * 0.035, 0.45, 0.85);
+  m.hop = { c, th0: m.theta, y0: m.y, u: 0, T, H: 0.9 + Math.max(0, dy) * 0.25 };
+  m.plat = null; if (Math.abs(dTh) > 0.02) m.dir = Math.sign(dTh);
+}
+function mamaLeave(why) {
+  const m = mama; m.state = 'leave'; m.why = why; m.t = 0; m.hop = null; m.vy = 0;
+  const head = polar(m.theta, PLAYER_R + 0.4, m.y + 2.6);
+  floatText(`Mama Muminka: ${MAMA_BYE[why]}`, head, '#ffd0e0', 19, 2.4);
+  if (why !== 'fed') {
+    const pts = 200 * mult(); addScore(pts);
+    banner('Mama Muminka odpuściła 💕', `Uff… nie dałaś się nakarmić · +${pts} pkt`, '#ffd0e0'); say('mamaGone', true);
+  }
+}
+function mamaCatch() {
+  const lost = Object.keys(G.powers).some(k => G.powers[k] > 0) || G.lantern;
+  if (G.powers.fire > 0) G.heat = 0;
+  for (const k in G.powers) G.powers[k] = 0;
+  G.lantern = false; G.full = FULL_DUR; P.vx *= 0.4; P.invuln = Math.max(P.invuln, 0.8);
+  mama.food.visible = false;
+  banner('NAKARMIONA! 🥞', lost ? 'Moce przepadły · Mi musi to przetrawić…' : 'Mi musi to przetrawić…', '#ffb0c8');
+  say('full', true); Snd.munch(); flash('#ffd0e0', 0.35); cam.shake = 0.2;
+  burst(miCenter(), 30, [0xd9973e, 0xfff2c0, 0xc0182a], 6, 0.3, 0.7, 6);
+  mamaLeave('fed');
+}
+function updateMama(dt, t) {
+  const m = mama;
+  if (m.state === 'off') {
+    if (G.iceActive && G.time >= G.mamaNext && P.rocketT <= 0 && !P.frozen) spawnMama();
+    return;
+  }
+  m.t += dt;
+  let running = false;
+  if (m.state === 'chase') {
+    while (m.queue.length && !crumbOk(m.queue[0])) m.queue.shift();
+    if (!m.hop) {
+      if (m.plat && !m.plat.dead) { m.theta += m.plat.dTheta; m.y = m.plat.y; }
+      if ((m.wait -= dt) <= 0 && m.queue.length) {
+        let c = m.queue.shift();
+        if (m.queue.length > 5) c = m.queue.shift(); // Mi is far ahead: skip a step
+        hopTo(c);
+      } else if (!m.plat || !m.plat.solid) { mamaLeave('fall'); m.vy = 0; }
+      else { // trot along her plank towards Mi
+        const p = m.plat, lim = p.half - 0.5 / PLAYER_R;
+        const d = p.ring ? wrapAngle(P.theta - m.theta) : clamp(wrapAngle(P.theta - p.center), -lim, lim) - wrapAngle(m.theta - p.center);
+        if (Math.abs(d) > 0.01) { m.dir = Math.sign(d); m.theta += m.dir * Math.min(Math.abs(d), 6.8 / PLAYER_R * dt); running = true; }
+      }
+    }
+    if (m.hop) {
+      const h = m.hop, c = h.c; h.u = Math.min(1, h.u + dt / h.T);
+      const dTh = wrapAngle(crumbTheta(c) - h.th0), y1 = c.plat.y;
+      m.theta = h.th0 + dTh * h.u; m.y = lerp(h.y0, y1, h.u) + h.H * 4 * h.u * (1 - h.u);
+      if (h.u >= 1) { m.hop = null; m.plat = c.plat; m.y = y1; m.wait = 0.12; Snd.mamaHop(); }
+    }
+    if ((m.callT -= dt) <= 0) { m.callT = rand(2.2, 3.2); floatText(pick(MAMA_CALLS), polar(m.theta, PLAYER_R + 0.4, m.y + 2.6), '#ffd0e0', 19, 1.8); }
+    if (Math.random() < dt * 4 && m.food.visible) { const p = m.food.getWorldPosition(_tmp); emit(p.x, p.y + 0.2, p.z, rand(-0.2, 0.2), 1.2, rand(-0.2, 0.2), 0xffffff, 0.22, 0.8, -0.5, 1); }
+    const arc = Math.abs(wrapAngle(P.theta - m.theta)) * PLAYER_R, dy = P.y - m.y;
+    if (arc < 0.9 && dy > -1.2 && dy < 1.7 && P.invuln <= 0 && P.rocketT <= 0 && !P.frozen) mamaCatch();
+    else if (!m.hop) {
+      if (m.y < G.iceY + 0.3) mamaLeave('cold');
+      else if (P.y - m.y > 22) mamaLeave('far');
+      else if (m.t > 22) mamaLeave('tired');
+    }
+  } else { // leave: wave goodbye, then hop off the tower and drop out of sight
+    if (m.why === 'fed' && Math.random() < dt * 6) { const p = polar(m.theta, PLAYER_R + 0.3, m.y + 2.2); emit(p.x, p.y, p.z, rand(-0.5, 0.5), 1.5, rand(-0.5, 0.5), 0xff7aa8, 0.35, 1, -0.5, 1); }
+    if (m.t > (m.why === 'fall' ? 0 : 1.6)) {
+      if (!m.vy && m.r === PLAYER_R) m.vy = 6;
+      m.r += 2.6 * dt; m.vy -= 22 * dt; m.y += m.vy * dt;
+    }
+    if (m.t > 4.5) { m.state = 'off'; m.g.visible = false; G.mamaNext = G.time + rand(55, 85); return; }
+  }
+  // pose
+  const waving = m.state === 'leave' && m.r === PLAYER_R;
+  polar(m.theta, m.r, m.y, m.g.position);
+  m.g.rotation.y += (m.theta + (waving ? 0 : m.dir * 1.15) - m.g.rotation.y) * damp(10, dt);
+  const L = m.legL.rotation, R = m.legR.rotation, A = m.armR.rotation, k = damp(14, dt);
+  m.phase += dt * (running ? 14 : 0);
+  if (m.hop || m.vy) { L.x += (-0.7 - L.x) * k; R.x += (0.35 - R.x) * k; m.body.rotation.x = 0.12; }
+  else if (running) { L.x = Math.sin(m.phase) * 0.7; R.x = -L.x; m.body.rotation.x = 0.1; }
+  else { L.x += -L.x * k; R.x += -R.x * k; m.body.rotation.x *= 1 - k; }
+  m.body.position.y = running ? Math.abs(Math.sin(m.phase)) * 0.06 : 0;
+  m.body.rotation.z = running ? Math.sin(m.phase) * 0.06 : 0;
+  m.armL.rotation.set(running ? Math.sin(m.phase) * 0.25 : 0, 0, -0.18);
+  if (waving) A.set(-0.2, 0, 2.3 + Math.sin(t * 9) * 0.35); // waves with the (now empty) plate
+  else A.set(-1.25 + Math.sin(t * 6) * 0.06, 0, 0.12);
+  m.plate.rotation.set(-A.x, -A.y, -A.z);
+  m.head.rotation.z = Math.sin(t * 2.4) * 0.07;
+}
+
 const _pc = new THREE.Vector3(), _tmp = new THREE.Vector3();
 function updateObjects(dt, t) {
   miCenter(_pc);
@@ -1674,6 +1841,7 @@ function updateTimers(dt) {
   if (G.comboTimer > 0) { G.comboTimer -= dt; if (G.comboTimer <= 0) endCombo(); }
   if (G.powers.fire > 0) G.heat = 100 * G.powers.fire / G.fireTotal;
   else G.heat = Math.max(0, Math.min(100, G.heat) - 1.2 * dt);
+  if (G.full > 0 && (G.full -= dt) <= 0) { G.full = 0; Snd.burp(); floatText('*bek!* 😌', polar(P.theta, PLAYER_R, P.y + 2.2), '#ffd0e0', 24, 1.4); }
   bubbleT -= dt;
   G.dangerQuip -= dt;
   if (G.iceActive && P.y - G.iceY < 3.5 && G.dangerQuip <= 0) { say('danger', true); G.dangerQuip = 9; }
@@ -1740,6 +1908,16 @@ function animateMi(dt, t) {
   const air = P.grounded ? 0 : clamp(P.vy / 80, -0.08, 0.14);
   const sq = clamp(M.squash * 0.06, -0.3, 0.3);
   M.body.scale.set(1 + sq * 0.6 - air * 0.4, 1 - sq + air, 1 + sq * 0.6 - air * 0.4);
+  // full tummy after Mama Muminka's pancakes (deflates over the last second)
+  M.fat += ((G.full > 0 ? Math.min(1, G.full / 1.2) : 0) - M.fat) * damp(5, dt);
+  const f = M.fat;
+  M.belly.visible = f > 0.02; M.belly.scale.set(1.3 * f, 1.15 * f, 1.2 * f);
+  M.dress.scale.set(1 + 0.3 * f, 1, 1 + 0.3 * f);
+  M.skull.scale.set(1.05 + 0.08 * f, 0.95, 1 + 0.03 * f);
+  for (const c of M.cheeks) c.scale.set(1 + 0.5 * f, 0.6 + 0.3 * f, 0.3 + 0.15 * f);
+  M.legL.position.x = -0.1 - 0.05 * f; M.legR.position.x = 0.1 + 0.05 * f;
+  M.armL.position.x = -0.15 - 0.09 * f; M.armR.position.x = 0.15 + 0.09 * f;
+  M.body.rotation.z = moving && P.grounded ? Math.sin(M.phase) * 0.12 * f : 0; // waddle
   // bun wobble
   M.bunV += (-140 * M.bunA - 6 * M.bunV) * dt; M.bunA += M.bunV * dt;
   M.bun.rotation.x = clamp(M.bunA * 0.05, -0.6, 0.6) - P.vx / MAX_SPEED * 0.12 * P.facing * 0;
@@ -1833,6 +2011,7 @@ function updateCamera(dt, t) {
 //  HUD
 // =====================================================================
 let powHTMLKey = '';
+const FULL_DEF = { icon: '🥞', name: 'Najedzona (wolniej)', color: 0xff8ab0 };
 function updateHUD() {
   $('score').textContent = G.score.toLocaleString('pl-PL');
   $('floor').textContent = P.maxFloor; $('chilis').textContent = G.chilis;
@@ -1855,14 +2034,15 @@ function updateHUD() {
   const act = Object.keys(G.powers).filter(k => G.powers[k] > 0);
   if (G.lantern) act.push('lantern');
   if (P.rocketT > 0) act.push('rocket');
+  if (G.full > 0) act.push('full');
   const key = act.join(',');
   if (key !== powHTMLKey) {
     powHTMLKey = key;
-    $('powers').innerHTML = act.map(k => `<div class="pw panel" data-k="${k}"><b>${POWERS[k].icon} ${POWERS[k].name}</b><div class="bar"><i style="background:#${new THREE.Color(POWERS[k].color).getHexString()}"></i></div></div>`).join('');
+    $('powers').innerHTML = act.map(k => { const d = k === 'full' ? FULL_DEF : POWERS[k]; return `<div class="pw panel" data-k="${k}"><b>${d.icon} ${d.name}</b><div class="bar"><i style="background:#${new THREE.Color(d.color).getHexString()}"></i></div></div>`; }).join('');
   }
   for (const el of $('powers').children) {
     const k = el.dataset.k;
-    const frac = k === 'lantern' ? 1 : k === 'rocket' ? P.rocketT / POWERS.rocket.dur : G.powers[k] / (k === 'fire' ? G.fireTotal : POWERS[k].dur);
+    const frac = k === 'lantern' ? 1 : k === 'full' ? G.full / FULL_DUR : k === 'rocket' ? P.rocketT / POWERS.rocket.dur : G.powers[k] / (k === 'fire' ? G.fireTotal : POWERS[k].dur);
     el.querySelector('i').style.width = clamp(frac, 0, 1) * 100 + '%';
   }
   // speech bubble
@@ -2016,7 +2196,7 @@ addEventListener('resize', onResize);
 //  MAIN LOOP
 // =====================================================================
 const clock = new THREE.Clock();
-let elapsed = 0;
+let elapsed = 0, skipRender = false;
 function frame() {
   requestAnimationFrame(frame);
   tick(Math.min(clock.getDelta(), 1 / 30));
@@ -2032,6 +2212,7 @@ function tick(dt) {
     updateIce(dt);
     updateTimers(dt);
     updateObjects(dt, t);
+    updateMama(dt, t);
     miEffects(dt, t);
     genUpTo(Math.floor(P.y / GAP) + 40);
     const minF = Math.floor((Math.min(G.iceY, P.y) - 35) / GAP);
@@ -2049,7 +2230,7 @@ function tick(dt) {
   updateParticles(dt);
   updateFloaters(dt);
   if (mode === 'play' || mode === 'dead') updateHUD();
-  composer.render();
+  if (!skipRender) composer.render();
 }
 
 // boot
@@ -2061,8 +2242,8 @@ $('loading').remove();
 $('start').classList.remove('hidden');
 frame();
 if (QS.has('autostart')) startGame();
-if (QS.has('debug')) window.__tick = (n = 1, dt = 1 / 60) => { for (let i = 0; i < n; i++) tick(dt); };
-window.__game = { P, G, TC, get hats() { return hats; }, get crumbles() { return crumblePlats; }, get cameos() { return cameos; }, addCameo: (f, k) => addCameo(f, floorsMap.get(f).plats[0], k), camera, render: () => composer.render(), land: p => land(p), get mode() { return mode; }, set mode(m) { mode = m; } };
+if (QS.has('debug')) window.__tick = (n = 1, dt = 1 / 60, fast = false) => { skipRender = fast; for (let i = 0; i < n; i++) tick(dt); skipRender = false; };
+window.__game = { P, G, TC, get hats() { return hats; }, get crumbles() { return crumblePlats; }, get cameos() { return cameos; }, mama, mi, plats: f => floorsMap.get(f)?.plats, spawnMama: () => { G.mamaNext = 0; spawnMama(); }, addCameo: (f, k) => addCameo(f, floorsMap.get(f).plats[0], k), camera, render: () => composer.render(), land: p => land(p), get mode() { return mode; }, set mode(m) { mode = m; } };
 </script>
 </body>
 </html>
