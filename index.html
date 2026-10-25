@@ -956,7 +956,7 @@ function addHat(f, p) {
 // =====================================================================
 const cSkin = std(0xf3dcc0, 0.7), cWhite = std(0xfbfaf6, 0.6), cBlack = std(0x111111, 0.3);
 const cGreen = std(0x3f7d4a, 0.8), cHat = std(0x5d7a3e, 0.85), cBoot = std(0x5a3a22, 0.7), cFeather = std(0xd9483a, 0.6);
-const cSniff = std(0xc4a27a, 0.85), cSniffDark = std(0x7a5a3e, 0.8), cSniffEar = std(0xe6a8a0, 0.8), cSilver = std(0xd0d6e0, 0.25, { metalness: 0.8 });
+const cSniff = std(0xc4a27a, 0.85), cSniffDark = std(0x7a5a3e, 0.8), cSniffEar = std(0xa8825f, 0.85), cSilver = std(0xd0d6e0, 0.25, { metalness: 0.8 });
 const cHole = std(0x0b0d1c, 1);
 const cap = (r, l, mat, x1, y1, z1, x2, y2, z2) => {
   const a = new THREE.Vector3(x1, y1, z1), b = new THREE.Vector3(x2, y2, z2), d = b.clone().sub(a);
@@ -979,26 +979,36 @@ function buildSnufkin() { // sits against the wall, legs dangling forward, playi
   for (const s of [-1, 1]) up.add(cap(0.055, 0, cGreen, s * 0.2, 0.68, 0.02, s * 0.09, 0.82, 0.24));
   return { g, head, up };
 }
-function buildSniff() { // kangaroo-ish: pear body, slender pointed snout, big pointy upright ears, long thin tail
-  const g = new THREE.Group(), up = new THREE.Group(); g.add(up);
-  const pear = new THREE.LatheGeometry([[0.001, 0.04], [0.17, 0.06], [0.24, 0.2], [0.21, 0.4], [0.13, 0.55], [0.08, 0.62]].map(([r, y]) => new THREE.Vector2(r, y)), 18);
-  up.add(new THREE.Mesh(pear, cSniff));
-  for (const s of [-1, 1]) g.add(ball(0.07, cSniffDark, s * 0.11, 0.035, 0.12, 1, 0.55, 1.9));
-  const head = new THREE.Group(); head.position.y = 0.76; up.add(head);
-  head.add(ball(0.16, cSniff, 0, 0, 0, 1, 0.95, 1));
-  const snout = new THREE.Mesh(new THREE.ConeGeometry(0.075, 0.28, 14), cSniff); snout.rotation.x = Math.PI / 2 + 0.15; snout.position.set(0, -0.04, 0.24); head.add(snout);
-  head.add(ball(0.03, cBlack, 0, -0.06, 0.38));
-  for (const s of [-1, 1]) {
-    head.add(ball(0.032, cBlack, s * 0.07, 0.05, 0.13), ball(0.011, cWhite, s * 0.07 + 0.008, 0.062, 0.158));
-    const ear = new THREE.Mesh(new THREE.ConeGeometry(0.075, 0.34, 12), cSniff); ear.scale.z = 0.4; ear.position.set(s * 0.1, 0.27, -0.03); ear.rotation.z = -s * 0.3; head.add(ear);
-    const inner = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.24, 10), cSniffEar); inner.scale.z = 0.3; inner.position.set(s * 0.1, 0.25, -0.01); inner.rotation.z = -s * 0.3; head.add(inner);
-    up.add(cap(0.035, 0, cSniff, s * 0.15, 0.5, 0.06, s * 0.035, 0.44, 0.2));
+// tube swept along a spine with a varying radius profile [[t, r], ...]
+function sweepGeo(pts, prof, seg = 40, rad = 14) {
+  const curve = new THREE.CatmullRomCurve3(pts.map(p => new THREE.Vector3(...p)));
+  const fr = curve.computeFrenetFrames(seg, false), pos = [], idx = [];
+  const R = t => { for (let i = 1; i < prof.length; i++) if (t <= prof[i][0]) { const [t0, r0] = prof[i - 1], [t1, r1] = prof[i], k = (t - t0) / (t1 - t0); return r0 + (r1 - r0) * (k * k * (3 - 2 * k)); } return prof[prof.length - 1][1]; };
+  for (let i = 0; i <= seg; i++) {
+    const t = i / seg, c = curve.getPointAt(t), r = R(t), N = fr.normals[i], B = fr.binormals[i];
+    for (let j = 0; j <= rad; j++) { const a = j / rad * TAU; pos.push(c.x + r * (Math.cos(a) * N.x + Math.sin(a) * B.x), c.y + r * (Math.cos(a) * N.y + Math.sin(a) * B.y), c.z + r * (Math.cos(a) * N.z + Math.sin(a) * B.z)); }
   }
-  const tail = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([new THREE.Vector3(0, 0.12, -0.17), new THREE.Vector3(0.25, 0.03, -0.25), new THREE.Vector3(0.52, 0.03, -0.12), new THREE.Vector3(0.64, 0.16, 0.02), new THREE.Vector3(0.58, 0.26, 0.06)]), 24, 0.022, 6), cSniff);
-  g.add(tail);
+  for (let i = 0; i < seg; i++) for (let j = 0; j < rad; j++) { const a = i * (rad + 1) + j, b = a + rad + 1; idx.push(a, b, a + 1, b, b + 1, a + 1); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals(); return g;
+}
+function buildSniff() { // Jansson's Sniff: kangaroo rump, body tapering straight into a long leaning snout, leaf ears, very long tail
+  const g = new THREE.Group(), up = new THREE.Group(); g.add(up);
+  up.add(new THREE.Mesh(sweepGeo([[0, 0.1, -0.16], [0, 0.32, -0.12], [0, 0.6, -0.02], [0, 0.86, 0.1], [0, 1.04, 0.24], [0, 1.06, 0.38], [0, 0.98, 0.56]],
+    [[0, 0.06], [0.07, 0.22], [0.2, 0.26], [0.4, 0.19], [0.58, 0.12], [0.7, 0.105], [0.8, 0.08], [0.93, 0.035], [1, 0.012]]), cSniff));
+  for (const s of [-1, 1]) {
+    up.add(ball(0.2, cSniff, s * 0.1, 0.2, -0.04, 0.6, 0.9, 0.95));          // haunches
+    g.add(ball(0.07, cSniff, s * 0.12, 0.03, 0.12, 0.9, 0.45, 2.6));           // long flat feet
+    up.add(ball(0.024, cBlack, s * 0.06, 1.11, 0.33));
+    const ear = ball(0.1, cSniff, s * 0.085, 1.25, 0.13, 1.25, 1.75, 0.18); ear.rotation.set(-0.7, 0, -s * 0.45); up.add(ear);
+    const inner = ball(0.075, cSniffEar, s * 0.088, 1.25, 0.15, 1.1, 1.5, 0.12); inner.rotation.set(-0.7, 0, -s * 0.45); up.add(inner);
+    up.add(cap(0.03, 0, cSniff, s * 0.12, 0.66, 0.02, s * 0.15, 0.52, 0.18), cap(0.026, 0, cSniff, s * 0.15, 0.52, 0.18, s * 0.06, 0.56, 0.3));
+    for (let k = -1; k <= 1; k += 2) up.add(cap(0.003, 0, cBlack, s * 0.02, 0.99, 0.53, s * 0.09, 0.99 + k * 0.025, 0.52));
+  }
+  up.add(ball(0.022, cBlack, 0, 0.985, 0.57));
+  const coin = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.02, 14), goldMat); coin.position.set(0, 0.6, 0.33); coin.rotation.x = 1.2; up.add(coin);
+  g.add(new THREE.Mesh(sweepGeo([[0, 0.14, -0.2], [0.18, 0.04, -0.34], [0.5, 0.025, -0.32], [0.82, 0.03, -0.12], [0.95, 0.06, 0.06]], [[0, 0.05], [0.15, 0.03], [1, 0.012]], 30, 8), cSniff));
   for (let i = 0; i < 9; i++) { const c = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.025, 12), goldMat); c.position.set(rand(-0.35, 0.35), 0.02 + (i % 3) * 0.025, rand(0.25, 0.5)); c.rotation.set(rand(-0.3, 0.3), 0, rand(-0.3, 0.3)); g.add(c); }
-  const chest = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.2, 0.2), cBoot); chest.position.set(-0.42, 0.1, 0.18); chest.rotation.y = 0.4; g.add(chest);
-  return { g, head, up };
+  return { g, up };
 }
 function buildMoomin() { // leans out of a round window in the tower wall and waves
   const g = new THREE.Group(), up = new THREE.Group(); g.add(up);
@@ -1038,7 +1048,10 @@ function updateCameos(dt, t) {
       c.head.rotation.z = Math.sin(ph * 4.2) * 0.12; c.up.rotation.x = Math.sin(ph * 2.1) * 0.05;
       if ((c.noteT -= dt) < 0) { c.noteT = rand(0.5, 0.9); floatText(pick(['♪', '♫', '♬']), polar(c.theta + rand(-0.05, 0.05), 6.6, c.y + 1.3), '#8fe39a', 26, 1.6); }
     } else if (c.kind === 'sniff') {
-      c.head.rotation.y = Math.sin(ph * 1.3) * 0.6; c.up.position.y = Math.abs(Math.sin(ph * 3)) * 0.03;
+      // always show the long snout in profile, turned towards Mi; mirror so the tail never sinks into the wall
+      const dir = wrapAngle(P.theta - c.theta) >= 0 ? 1 : -1;
+      c.g.rotation.y = cam.theta + dir * 1.25; c.g.scale.x = dir > 0 ? -1 : 1;
+      c.up.rotation.y = Math.sin(ph * 1.3) * 0.15; c.up.rotation.x = Math.max(0, Math.sin(ph * 2.2)) * 0.08;
       if (Math.random() < dt * 2) { const p = polar(c.theta + rand(-0.04, 0.04), 6.6, c.y + 0.1); emit(p.x, p.y, p.z, 0, 0.6, 0, 0xffe070, 0.15, 0.5); }
     } else {
       c.arm.rotation.z = -0.4 + Math.sin(ph * 7) * 0.5; c.head.rotation.z = Math.sin(ph * 1.7) * 0.12;
